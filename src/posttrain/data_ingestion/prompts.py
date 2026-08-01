@@ -13,7 +13,7 @@ from __future__ import annotations
 
 from typing import Any, Protocol
 
-from posttrain.data.schema import Problem
+from posttrain.data_ingestion.schema import Problem
 
 __all__ = ["SYSTEM_PROMPT", "build_messages", "to_chat_prompt"]
 

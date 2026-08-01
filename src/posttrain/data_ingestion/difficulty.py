@@ -34,7 +34,7 @@ from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Iterable, Mapping
 
-from posttrain.data.schema import Problem
+from posttrain.data_ingestion.schema import Problem
 
 __all__ = [
     "DifficultyProfile",

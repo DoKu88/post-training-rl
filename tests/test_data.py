@@ -9,7 +9,7 @@ import dataclasses
 
 import pytest
 
-from posttrain.data.ingest import (
+from posttrain.data_ingestion.ingest import (
     cap_generated,
     difficulty_bucket,
     estimate_tokens,
@@ -25,8 +25,8 @@ from posttrain.data.ingest import (
     slugify,
     unsupported_reason,
 )
-from posttrain.data.prompts import SYSTEM_PROMPT, to_chat_prompt
-from posttrain.data.schema import Problem, TestCase
+from posttrain.data_ingestion.prompts import SYSTEM_PROMPT, to_chat_prompt
+from posttrain.data_ingestion.schema import Problem, TestCase
 
 from conftest import make_raw_row
 
@@ -394,7 +394,7 @@ def test_no_train_test_leak(train_problems, test_problems):
 
 
 def test_statements_within_token_budget(cached_split):
-    from posttrain.data.ingest import DEFAULT_MAX_STMT_TOKENS
+    from posttrain.data_ingestion.ingest import DEFAULT_MAX_STMT_TOKENS
 
     for p in cached_split:
         assert p.statement.strip(), f"{p.id} has an empty statement"
@@ -402,7 +402,7 @@ def test_statements_within_token_budget(cached_split):
 
 
 def test_generated_tests_respect_cap(cached_split):
-    from posttrain.data.ingest import DEFAULT_MAX_GENERATED
+    from posttrain.data_ingestion.ingest import DEFAULT_MAX_GENERATED
 
     for p in cached_split:
         generated = [t for t in p.tests if t.kind == "generated"]
@@ -410,7 +410,7 @@ def test_generated_tests_respect_cap(cached_split):
 
 
 def test_buckets_are_valid(cached_split):
-    from posttrain.data.schema import BUCKETS
+    from posttrain.data_ingestion.schema import BUCKETS
 
     assert {p.bucket for p in cached_split} <= set(BUCKETS)
 

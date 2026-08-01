@@ -29,9 +29,9 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Iterable, Protocol
 
-from posttrain.data.schema import Problem, TestCase
+from posttrain.data_ingestion.schema import Problem, TestCase
 
-LOG = logging.getLogger("posttrain.data.ingest")
+LOG = logging.getLogger("posttrain.data_ingestion.ingest")
 
 __all__ = [
     "ingest",
@@ -578,7 +578,7 @@ def load_cached(path: str | Path) -> list[Problem]:
     _, jsonl = _resolve_cache(path)
     if not jsonl.is_file():
         raise FileNotFoundError(
-            f"no cache at {jsonl}; run `python -m posttrain.data.ingest --split <split> "
+            f"no cache at {jsonl}; run `python -m posttrain.data_ingestion.ingest --split <split> "
             f"--cache {Path(path)}` first"
         )
     with jsonl.open("r", encoding="utf-8") as fh:
@@ -598,7 +598,7 @@ def load_meta(path: str | Path) -> dict[str, Any]:
 
 def _build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
-        prog="python -m posttrain.data.ingest",
+        prog="python -m posttrain.data_ingestion.ingest",
         description="Ingest a CodeContests split into a cached set of Problem records.",
     )
     p.add_argument("--split", default="train", help="train | valid | test")

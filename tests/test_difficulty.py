@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from posttrain.data.difficulty import (
+from posttrain.data_ingestion.difficulty import (
     DifficultyProfile,
     aggregate_rollouts,
     apply_profiles,
@@ -16,7 +16,7 @@ from posttrain.data.difficulty import (
     save_profiles,
     signal_report,
 )
-from posttrain.data.schema import Problem, TestCase
+from posttrain.data_ingestion.schema import Problem, TestCase
 
 
 def mk(pid: str, bucket: str = "unknown") -> Problem:
@@ -139,7 +139,7 @@ def test_signal_report_mentions_wasted_groups():
 
 def test_rebucketed_problems_survive_the_ingest_cache(tmp_path):
     """Re-bucketed sets must round-trip through save/load like any other split."""
-    from posttrain.data.ingest import load_cached, save
+    from posttrain.data_ingestion.ingest import load_cached, save
 
     problems = apply_profiles([mk("a")], {"a": DifficultyProfile("a", 0.9, 8, "qwen3b")})
     restored = load_cached(save(problems, tmp_path / "empirical"))

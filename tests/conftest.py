@@ -19,7 +19,7 @@ _SRC = Path(__file__).resolve().parents[1] / "src"
 if _SRC.is_dir() and str(_SRC) not in sys.path:
     sys.path.insert(0, str(_SRC))
 
-from posttrain.data.ingest import DEFAULT_CACHE_ROOT, cache_exists, ingest, load_cached  # noqa: E402
+from posttrain.data_ingestion.ingest import DEFAULT_CACHE_ROOT, cache_exists, ingest, load_cached  # noqa: E402
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 

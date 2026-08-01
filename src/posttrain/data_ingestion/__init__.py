@@ -5,6 +5,6 @@ raw HuggingFace rows. That indirection is what makes the dataset a swappable
 axis (docs/README.md).
 """
 
-from posttrain.data.schema import Problem, TestCase
+from posttrain.data_ingestion.schema import Problem, TestCase
 
 __all__ = ["Problem", "TestCase"]
