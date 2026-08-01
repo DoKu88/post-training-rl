@@ -170,6 +170,15 @@ rollout:
   gpu_memory_utilization: 0.45
 ```
 
+> **Check vLLM can actually serve your chosen quantization — especially 8-bit.**
+> vLLM's **4-bit AWQ/GPTQ** path is mature; its **8-bit (bnb int8)** support is
+> newer and version-gated, and if vLLM can't serve the 8-bit copy it silently falls
+> back to bf16 (~15 GB) and blows the budget. This is the single most common reason
+> the preferred 8-bit path is rejected. **The full discussion of quantization
+> subtleties and what-can-go-wrong — plus the hands-on validation commands — lives
+> in [`05-lora-qlora.md`](05-lora-qlora.md) → "Considerations & failure modes"
+> (check #1).** Run that check before committing to a precision here.
+
 **Unit tests**
 - `tests/test_quant.py::test_build_quant_none_returns_none` — assert
   `build_quant_config("none") is None`. *(model-free)*
