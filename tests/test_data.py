@@ -189,6 +189,32 @@ def test_max_refs_caps_reference_solutions():
     assert reason is None and problem is not None and len(problem.reference_solutions) == 1
 
 
+def test_max_refs_is_honoured_through_ingest():
+    """Regression: ingest_with_stats accepted max_refs but never forwarded it."""
+    row = make_raw_row(languages=(3,) * 40)
+
+    assert len(ingest("train", rows=[row])[0].reference_solutions) == 40  # 0 = keep all
+    assert len(ingest("train", rows=[row], max_refs=5)[0].reference_solutions) == 5
+
+    problems, _ = ingest_with_stats("train", rows=[row], max_refs=3)
+    assert len(problems[0].reference_solutions) == 3
+
+
+def test_cli_flags_reach_the_pipeline(tmp_path):
+    """The CLI is the documented entry point — its flags must actually apply."""
+    from posttrain.data_ingestion.ingest import _build_parser
+
+    args = _build_parser().parse_args(
+        ["--split", "train", "--cache", str(tmp_path), "--max-refs", "5", "--max-generated", "2"]
+    )
+    assert args.max_refs == 5 and args.max_generated == 2
+
+    problems = ingest("train", rows=[make_raw_row(languages=(3,) * 40, n_generated=50)],
+                      max_refs=args.max_refs, max_generated=args.max_generated)
+    assert len(problems[0].reference_solutions) == 5
+    assert len([t for t in problems[0].tests if t.kind == "generated"]) == 2
+
+
 def test_extract_time_limit():
     # carried through so doc 2's sandbox can set a per-problem timeout
     assert extract_time_limit({"time_limit": {"seconds": 2, "nanos": 500_000_000}}) == 2.5

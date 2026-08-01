@@ -487,6 +487,7 @@ def ingest_with_stats(
             split,
             max_generated=max_generated,
             max_stmt_tokens=max_stmt_tokens,
+            max_refs=max_refs,
             seed=seed,
             tokenizer=tokenizer,
             stats=stats,
