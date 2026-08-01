@@ -1,0 +1,16 @@
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.ipynb_checkpoints/
+
+# Processed dataset caches — regenerate with `python -m posttrain.data.ingest`.
+# Anchored to the repo root: a bare `data/` would also ignore src/posttrain/data/.
+/data/
+
+# Training artifacts
+outputs/
+runs/
+wandb/
+*.pt
+*.safetensors
