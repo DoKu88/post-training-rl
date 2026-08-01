@@ -29,6 +29,7 @@ per-problem pass rates has to wait.
 from __future__ import annotations
 
 import json
+import re
 from collections import Counter
 from dataclasses import dataclass, replace
 from pathlib import Path
@@ -167,17 +168,73 @@ def aggregate_rollouts(
 
 # --------------------------------------------------------------------------
 # sidecar i/o — kept beside the split, never mixed into the ingest cache
+#
+# The filename is scoped by model (`difficulty-qwen2-5-7b-instruct.jsonl`) so
+# profiling a second policy cannot silently overwrite the first, and so loading
+# the wrong model's measurements fails loudly instead of quietly mis-ordering
+# the curriculum. A bare `difficulty.jsonl` is still used when no model is given.
 # --------------------------------------------------------------------------
 
+_SIDECAR_STEM = "difficulty"
+_SIDECAR_GLOB = "difficulty*.jsonl"
+_SLUG = re.compile(r"[^a-z0-9]+")
 
-def _sidecar_path(path: str | Path) -> Path:
+
+def _model_slug(model: str) -> str:
+    return _SLUG.sub("-", (model or "").lower()).strip("-")
+
+
+def _sidecar_path(path: str | Path, model: str = "") -> Path:
+    """Resolve a split directory (+ model) to its sidecar file.
+
+    A path that already ends in `.jsonl` is returned untouched, so callers can
+    point at an explicit file.
+    """
     p = Path(path)
-    return p if p.suffix == ".jsonl" else p / "difficulty.jsonl"
+    if p.suffix == ".jsonl":
+        return p
+    slug = _model_slug(model)
+    return p / (f"{_SIDECAR_STEM}-{slug}.jsonl" if slug else f"{_SIDECAR_STEM}.jsonl")
 
 
-def save_profiles(profiles: Iterable[DifficultyProfile], path: str | Path) -> Path:
-    """Write profiles beside a cached split; returns the file path."""
-    out = _sidecar_path(path)
+def _resolve_for_load(path: str | Path, model: str) -> Path:
+    p = Path(path)
+    if p.suffix == ".jsonl" or model:
+        return _sidecar_path(p, model)
+    # No model asked for: unambiguous only if the split holds exactly one sidecar.
+    candidates = sorted(p.glob(_SIDECAR_GLOB)) if p.is_dir() else []
+    if len(candidates) == 1:
+        return candidates[0]
+    if len(candidates) > 1:
+        raise ValueError(
+            f"{len(candidates)} difficulty sidecars in {p} — pass model= to pick one: "
+            f"{[c.name for c in candidates]}"
+        )
+    return _sidecar_path(p)
+
+
+def save_profiles(
+    profiles: Iterable[DifficultyProfile],
+    path: str | Path,
+    model: str | None = None,
+) -> Path:
+    """Write profiles beside a cached split; returns the file path.
+
+    The model is taken from the profiles themselves unless given explicitly.
+    Profiles from different policies must not share a file — they are not
+    comparable — so a mixed batch is rejected rather than merged.
+    """
+    profiles = list(profiles)
+    if model is None:
+        tags = {p.model for p in profiles}
+        if len(tags) > 1:
+            raise ValueError(
+                f"profiles span multiple models {sorted(tags)}; save them separately "
+                "or pass model= explicitly"
+            )
+        model = next(iter(tags), "")
+
+    out = _sidecar_path(path, model)
     out.parent.mkdir(parents=True, exist_ok=True)
     with out.open("w", encoding="utf-8") as fh:
         for prof in profiles:
@@ -185,12 +242,26 @@ def save_profiles(profiles: Iterable[DifficultyProfile], path: str | Path) -> Pa
     return out
 
 
-def load_profiles(path: str | Path) -> dict[str, DifficultyProfile]:
-    src = _sidecar_path(path)
+def load_profiles(path: str | Path, model: str | None = None) -> dict[str, DifficultyProfile]:
+    """Load a split's profiles, optionally asserting which policy measured them.
+
+    Passing `model` is the safe form: it both picks the right sidecar and
+    verifies the contents were measured on that policy. Without it, a split
+    holding profiles for several models is an error rather than a coin flip.
+    """
+    src = _resolve_for_load(path, model or "")
     if not src.is_file():
         raise FileNotFoundError(f"no difficulty profiles at {src}")
     with src.open("r", encoding="utf-8") as fh:
         profiles = [DifficultyProfile.from_dict(json.loads(l)) for l in fh if l.strip()]
+
+    if model:
+        wrong = sorted({p.model for p in profiles} - {model})
+        if wrong:
+            raise ValueError(
+                f"{src} holds profiles measured on {wrong}, not {model!r}. "
+                "Pass rates from a different policy would mis-order the curriculum."
+            )
     return {p.problem_id: p for p in profiles}
 
 

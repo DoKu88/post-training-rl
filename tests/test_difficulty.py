@@ -128,6 +128,51 @@ def test_profiles_roundtrip(tmp_path):
         load_profiles(tmp_path / "missing")
 
 
+def test_sidecar_is_scoped_by_model(tmp_path):
+    """A second policy's profiles must not overwrite the first's."""
+    save_profiles([DifficultyProfile("a", 0.25, 8, "Qwen/Qwen2.5-3B-Instruct")], tmp_path / "train")
+    save_profiles([DifficultyProfile("a", 0.75, 8, "Qwen/Qwen2.5-7B-Instruct")], tmp_path / "train")
+
+    names = sorted(p.name for p in (tmp_path / "train").glob("difficulty*.jsonl"))
+    assert names == [
+        "difficulty-qwen-qwen2-5-3b-instruct.jsonl",
+        "difficulty-qwen-qwen2-5-7b-instruct.jsonl",
+    ]
+
+    # both survive and stay distinguishable
+    three = load_profiles(tmp_path / "train", model="Qwen/Qwen2.5-3B-Instruct")
+    seven = load_profiles(tmp_path / "train", model="Qwen/Qwen2.5-7B-Instruct")
+    assert three["a"].pass_rate == 0.25
+    assert seven["a"].pass_rate == 0.75
+
+
+def test_load_profiles_rejects_model_mismatch(tmp_path):
+    path = save_profiles([DifficultyProfile("a", 0.5, 8, "qwen3b")], tmp_path / "train")
+    with pytest.raises(ValueError, match="mis-order the curriculum"):
+        load_profiles(path, model="qwen7b")
+
+
+def test_load_profiles_requires_model_when_ambiguous(tmp_path):
+    save_profiles([DifficultyProfile("a", 0.25, 8, "qwen3b")], tmp_path / "train")
+    save_profiles([DifficultyProfile("a", 0.75, 8, "qwen7b")], tmp_path / "train")
+
+    with pytest.raises(ValueError, match="pass model="):
+        load_profiles(tmp_path / "train")
+
+    # a single sidecar stays ergonomic — no model= needed
+    save_profiles([DifficultyProfile("a", 0.5, 8, "solo")], tmp_path / "other")
+    assert load_profiles(tmp_path / "other")["a"].pass_rate == 0.5
+
+
+def test_save_profiles_rejects_mixed_models(tmp_path):
+    mixed = [DifficultyProfile("a", 0.5, 8, "qwen3b"), DifficultyProfile("b", 0.5, 8, "qwen7b")]
+    with pytest.raises(ValueError, match="multiple models"):
+        save_profiles(mixed, tmp_path / "train")
+
+    # explicit model= is the escape hatch when you really mean it
+    assert save_profiles(mixed, tmp_path / "train", model="merged").is_file()
+
+
 def test_signal_report_mentions_wasted_groups():
     problems = [
         Problem("a", "s", [], 0, [], pass_rate=0.5),
