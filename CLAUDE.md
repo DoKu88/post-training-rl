@@ -49,19 +49,11 @@ Hard-won installation facts — see `docs/research/rlvr-stack.md` for sources:
 
 ## Vocabulary
 
-Use these terms exactly. `CONTEXT.md` is the canonical glossary once it exists.
+**[`CONTEXT.md`](CONTEXT.md) is the canonical glossary.** Read it before naming anything, and
+use its terms exactly — including its `_Avoid_` lists. Not restated here.
 
-- **rollout** — one sampled completion.
-- **group** — the N rollouts sharing a prompt. GRPO normalizes advantage *within* a group,
-  so a group whose rollouts all score identically produces zero gradient.
-- **verifier** — executes a rollout's code against tests in a sandbox. Impure, does I/O,
-  returns a structured `ExecutionResult`. **Never assigns a reward.**
-- **scorer** — pure function `ExecutionResult -> float`. No I/O, no execution, no subprocess.
-  Trivially unit-testable, and that is the point of the split.
-- **ladder** — the graded reward: no code → parses → runs → fraction of tests passed.
-
-Do not use "environment" for the verifier. In TRL, `environment_factory` means multi-turn
-tool calling, which this project does not do.
+The one worth flagging up front: **never call the verifier an "environment."** In TRL,
+`environment_factory` means multi-turn tool calling, which this project does not do.
 
 ## How work gets planned and executed
 
@@ -76,10 +68,17 @@ rather than improvising a different design.
 
 ## Reference material
 
+- **[`CONTEXT.md`](CONTEXT.md)** — the glossary. Terms only, no implementation detail.
+- **[`docs/adr/`](docs/adr/)** — every significant decision and why it was made. **Read the
+  relevant ADR before changing behaviour in that area**, and say so explicitly if your work
+  contradicts one rather than silently overriding it.
 - `docs/research/rlvr-stack.md` — primary-source research on TRL, vLLM, bitsandbytes on
   sm_120, the CodeContests schema, sandboxing, and reward shape. **Read it before making
   stack decisions.** It documents several places where official docs are actively wrong
   (vLLM's attention-backend doc; the CodeContests dataset card's enum tables).
+- `docs/research/format-adherence.md` — code extraction policies across seven
+  implementations, format rewards, constrained decoding, assistant prefill, and prompt
+  templates.
 
 ## Code standards
 
