@@ -1,0 +1,30 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "post-training-rl"
+version = "0.1.0"
+description = "RLVR for competitive programming: GRPO on CodeContests, rewarded by execution"
+requires-python = ">=3.11"
+# Dependencies are declared in requirements.txt, not here. The environment is conda-managed
+# and this package is only ever installed with `pip install -e .` to put src/ on the path,
+# so a second declaration would be a second source of truth that drifts on versions.
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+# Both suites that cost more than a millisecond are excluded by default, so the command run
+# on every red-green cycle stays sub-second and spawns nothing. Run them explicitly:
+#   pytest -q -m subprocess_backend
+#   pytest -q -m containment
+markers = [
+    "subprocess_backend: spawns real subprocesses",
+    "containment: requires firejail",
+]
+# Every test here is a plain function. Without this, pytest tries to collect the domain
+# types whose names begin with "Test" — TestCase, TestOutcome, TestPool, TestResult — and
+# warns that it cannot. Those names come from verifier-scorer.md §2 and are not negotiable.
+python_classes = []
+addopts = '-m "not containment and not subprocess_backend"'

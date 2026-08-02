@@ -6,6 +6,12 @@ Every rollout's code is executed inside `firejail` — `--private` for a fresh t
 `--timeout` — running under a dedicated UID. Limits are set by the sandbox binary rather
 than a `preexec_fn`.
 
+> **Amended by [ADR-0014](0014-external-wall-clock-timer.md).** The `--timeout` flag named
+> above is no longer used: it costs a flat ~2 s per execution regardless of its value, and
+> it cannot distinguish its own timeout from an uncaught exception. The wall-clock limit is
+> now enforced by `timeout(1)` wrapping the firejail invocation. **Every other flag in this
+> decision stands unchanged**, as does the flat 10 s limit of ADR-0006.
+
 ## Considered Options
 
 The initial plan was a plain subprocess with `RLIMIT_*` set in the parent. That was

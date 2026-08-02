@@ -1,0 +1,119 @@
+# Every value that governs verifier or sandbox behaviour. No literal in code decides any of
+# these — two runs that differ must be diffable as files.
+
+sandbox:
+  # firejail | subprocess. No default, and never inferred: if this says firejail and the
+  # binary is absent, startup raises naming it rather than silently downgrading to the
+  # weaker backend (ADR-0005).
+  backend: firejail
+
+  # Flat, and deliberately not the dataset's own `time_limit` (ADR-0006). That decision is
+  # unchanged; only the value has moved, and provisionally.
+  #
+  # ADR-0006 sets 10.0, following DeepMind's released evaluator, on the reasoning that
+  # Python is ~10x slower than the C++ the 1-6s contest limits were calibrated for. Measured
+  # on this machine (CPython 3.11, sprint 1), that headroom is far larger than needed:
+  #
+  #   correct O(n) / O(n log n), n = 1,000,000       0.07 - 0.10 s
+  #   segment tree, 1e5 queries                      0.20 s
+  #   2D DP, 2000x2000                               0.57 s   <- slowest sound solution found
+  #   list.insert(0, x) x 200,000  (hidden O(n^2))   1.93 s
+  #   explicit O(n^2), 100M ops                      2.66 s
+  #   explicit O(n^2), 900M ops                     11.00 s
+  #
+  # 2.0 keeps ~3.5x margin over the slowest algorithmically-sound solution measured, while
+  # placing the "too slow" boundary below the O(n^2) cases — which is the signal that
+  # matters, since a solution that times out on the longest graded input but passes the
+  # small public tests is reported as exactly that (ADR-0009 orders graded longest-first).
+  #
+  # It also cuts the cost of a genuinely hung rollout from 22s to 6s.
+  #
+  # DELIBERATELY PROVISIONAL. The timeout rate is unmeasured until a real run, so this is a
+  # reasonable value chosen to avoid over-optimising early rather than a settled one. Sprint
+  # 3 should ablate 1 / 2 / 5 / 10 against measured timeout rates and pass@k. See
+  # docs/plans/sprint-01-status.md §3.3.
+  timeout_seconds: 2.0
+
+  memory_limit_gib: 4
+  max_processes: 32
+  max_open_files: 32
+  max_file_size_mib: 2
+
+  # Enforced by the reader in the parent process, not by an rlimit. Pipe capacity is 64 KiB
+  # and --rlimit-fsize does not apply to pipes, so an unbounded reader is how a runaway
+  # print loop exhausts memory in the training process itself (ADR-0009).
+  stdout_cap_bytes: 10485760
+
+  stderr_excerpt_bytes: 2048
+  worker_threads: 12
+
+  # The three timers of ADR-0014, outermost first. timeout(1) enforces timeout_seconds
+  # above; these govern what happens when a program ignores it.
+  #
+  #   timeout_seconds ──SIGTERM──> +kill_after ──SIGKILL──> +backstop_slack ──killpg──>
+  #
+  # kill_after: firejail needs a moment to tear its namespaces down. Killing it faster is
+  # how orphaned processes appear.
+  kill_after_seconds: 1.0
+  # backstop_slack: how far above timeout(1)'s deadline our own killpg sits. timeout(1)
+  # wins normally; this only fires if it wedges.
+  backstop_slack_seconds: 5.0
+  # reap_timeout: how long to wait for an exited child to be collected before killing its
+  # group outright. Reachable by a child that closes stdout and hangs.
+  reap_timeout_seconds: 5.0
+
+  # The non-numeric firejail flags, in order. Their values are the rlimits above; these are
+  # the switches (ADR-0005). Listed here rather than hardcoded because verifier-scorer.md §3
+  # requires the flag set be configuration, so two runs sandboxed differently are diffable.
+  #
+  #   --quiet          suppress firejail's own banner
+  #   --private        fresh tmpfs home
+  #   --noprofile      ignore the system firejail profile, so behaviour does not vary by host
+  #   --noroot         the sandboxed user is not root inside the namespace. A partial answer
+  #                    to ADR-0005's "dedicated UID": the remainder needs a real service
+  #                    account, which is deployment rather than code.
+  #   --seccomp=socket block network syscalls
+  #
+  # NOTE: --timeout is deliberately absent. ADR-0014 moved the wall-clock limit to
+  # timeout(1) outside firejail, because the flag cost a flat ~2s per execution.
+  firejail_flags:
+    - --quiet
+    - --private
+    - --noprofile
+    - --noroot
+    - --seccomp=socket
+
+comparator:
+  # Absolute, not relative — a difference of 1e-5 is accepted however large the operands
+  # are. Inherited from DeepMind's reference evaluator and preserved deliberately
+  # (ADR-0007). Two sharp edges ride on it: it is lax at small magnitudes, and values beyond
+  # 32-bit integer range reach the float path and lose precision, so two distinct very large
+  # integers compare equal. Changing this changes what counts as a correct answer.
+  absolute_float_tolerance: 1.0e-5
+
+startup:
+  # The self-test proves containment, not throughput, and the infinite loop has to run the
+  # clock out. Using the production timeout would make startup wait ten seconds for an
+  # answer two seconds gives.
+  self_test_timeout_seconds: 2.0
+
+determinism:
+  # Prepended to every solution as a seeding preamble, and paired with PYTHONHASHSEED in the
+  # child environment. Without it, two identical rollouts in one group can score differently
+  # and GRPO reads that difference as advantage — gradient for variance the model did not
+  # cause. null disables preamble injection (ADR-0008).
+  seed: 0
+
+tests:
+  # Caps per-rollout execution cost; CodeContests problems can carry hundreds of generated
+  # tests. The floor follows DeepCoder's finding that problems with fewer tests encourage
+  # the model to print memorised answers (ADR-0009).
+  max_tests_per_rollout: 15
+  min_tests_required: 5
+
+extraction:
+  # "" = no prefill, which is the default (ADR-0012). If ever set, this value has two
+  # consumers — the dataset builder that renders the prompt and the reward path that
+  # re-prepends before extraction — and they must be fed from this one key. Forgetting the
+  # second is documented as the single most likely way to silently score zero on everything.
+  prefill: ""
