@@ -1,8 +1,11 @@
 # Sprint 1 — status report
 
-Implementation record for [`sprint-01.md`](sprint-01.md). Covers what was built, which
-objectives were met, what was tested, what deviates from the plan, and what is carried
-forward.
+Implementation record for [`sprint-01.md`](sprint-01.md). Covers what was built, how it fits
+together, which objectives were met, what was tested, what deviates from the plan, and what is
+carried forward.
+
+For the architecture — call tree, block diagram, and the type contract at each seam — see
+[§2.1](#21-call-tree) through [§2.3](#23-the-type-contract-at-each-boundary).
 
 **Sprint 1 is complete. All four gates pass.** Branch `worktree-sprint-01`, 13 commits.
 
@@ -75,6 +78,167 @@ Task-by-task, each committed separately and reviewed before commit:
 | — | Status report | `62f2c02` |
 | — | All tunables to YAML; public-test decision | `64bbb5a` |
 | — | Truncation fix, timeout 2.0 s, audit fixes | `cb7ea9b` |
+
+### 2.1 Call tree
+
+Generated statically from `src/post_training_rl` — 10 files, 56 functions, 16 entry points.
+
+```
+verifier.py
+└── Verifier.verify_batch                    ← THE public entry point
+    # Verify each (completion, problem) pair, returning reports in input order.
+    Input:  (items: Sequence[tuple[str, Problem]])
+      * src/post_training_rl/verifier.py:76
+    Output: list[VerificationReport]
+    └── Verifier._verify_one
+        # Extracts, short-circuits when no code, else runs graded then public tests.
+        Input:  (completion: str, problem: Problem)     Output: VerificationReport
+        ├── extract_python                              [extraction.py:40]
+        │   # Recover executable Python via a syntax-gated cascade.
+        │   Input:  (completion: str, prefill: str='')  Output: Extraction
+        │   ├── _fenced_blocks   → dict[Fence, list[str]]   group blocks by fence, in order
+        │   ├── _parses          → bool                     ast.parse gate; failure is data
+        │   └── _is_code         → bool                     the bare tier's guard vs prose
+        └── Verifier._run_tests
+            # Run each test in order, abandoning the rest once one times out.
+            Input:  (source: str, tests: Sequence[TestCase])  Output: tuple[TestResult, ...]
+            ├── _timed_out       → bool          true once any earlier result was TIMEOUT
+            ├── _skipped         → TestResult    the SKIPPED_AFTER_TIMEOUT record
+            ├── Sandbox.run      ? 4 definitions  ◀── THE SEAM
+            │   ├── FirejailSandbox.run     [firejail.py:96]
+            │   │   └── _execute → _command / _child_environment / _read_capped / _reap
+            │   ├── SubprocessSandbox.run   [subprocess_.py:45]
+            │   └── FakeSandbox.run         [fake.py:35]
+            └── _classify        → TestResult
+                └── _outcome     → TestOutcome
+                    └── outputs_match  [comparator.py:13]  → bool
+
+rewards.py
+└── build_reward_functions
+    Input:  (shapes: RewardShapes)   Output: dict[str, RewardFn]
+    ├── binary / pass_rate / binary_threshold / ladder / code_r1 / extractability
+    │       each: (outcome: RolloutOutcome) -> float          ← the uniform contract
+    └── shared: _graded_results, _has_code, _passed, _ran, _pass_rate, _fence_terms
+
+startup.py
+└── verify_sandbox_or_raise (sandbox: Sandbox, timeout_seconds: float) -> None
+    └── Sandbox.run  ×4 hostile programs
+
+config.py
+├── load_verifier_config (path: Path) -> VerifierConfig
+└── load_reward_config   (path: Path) -> RewardConfig
+        both └── _read_yaml, _require
+```
+
+Three things the tree shows:
+
+- **`Sandbox.run ? one of 4 definitions` is the design, not an analysis failure.** Static
+  analysis cannot resolve `Protocol` dispatch — which is exactly why this is the only real
+  seam in the system.
+- **`Verifier.verify_batch` is the sole public entry into execution.** Everything below it is
+  private; `_verify_one` is never called from outside, which is what
+  `verifier-scorer.md` §6's "one public method" buys.
+- **`build_reward_functions` and `verify_sandbox_or_raise` have no in-repo callers.** Not dead
+  code — their caller is `train.py`, which arrives in sprint 3.
+
+Caveats inherent to static analysis: calls resolve by name, so dynamic dispatch, callbacks and
+registry lookups are invisible, and nothing here reflects which branches actually execute.
+
+### 2.2 Block diagram — components, interfaces, data flow
+
+```
+ ╔═══════════════════════════════════════════════════════════════════════════════════╗
+ ║  CONFIGURATION                                                                    ║
+ ║   config/verifier.yaml ──load_verifier_config()──▶ VerifierConfig                 ║
+ ║       sandbox{backend, timeout_seconds:2.0, rlimits, firejail_flags, 3 timers}    ║
+ ║       comparator{absolute_float_tolerance}  startup{self_test_timeout_seconds}    ║
+ ║       determinism{seed}  tests{cap,floor}  extraction{prefill}                    ║
+ ║   config/reward.yaml   ──load_reward_config()───▶ RewardConfig(.shapes)           ║
+ ╚═══════════════════════════════════════════════════════════════════════════════════╝
+            │                                                        │
+            ▼                                                        ▼
+ ┌────────────────────────────────────────────────────┐   ┌──────────────────────────┐
+ │ VERIFIER — impure, sandboxed          [ADR-0004]   │   │ SCORER — pure            │
+ │                                                    │   │                          │
+ │  Verifier.verify_batch(                            │   │ build_reward_functions(  │
+ │      items: Sequence[(completion, Problem)]        │   │     shapes: RewardShapes │
+ │  ) -> list[VerificationReport]                     │   │ ) -> dict[str, RewardFn] │
+ │                                                    │   │                          │
+ │  ThreadPoolExecutor(worker_threads) — input order  │   │  every entry:            │
+ │  ┌──────────────────────────────────────────────┐  │   │  RolloutOutcome -> float │
+ │  │ ① extract_python(completion, prefill)        │  │   │                          │
+ │  │      -> Extraction(code, fence, parsed)      │  │   │  binary ◀ default        │
+ │  │      tagged→untagged→other_tag→bare          │  │   │  pass_rate               │
+ │  │      code is None  ⇒ 0 sandbox calls         │  │   │  binary_threshold        │
+ │  │ ② build_preamble(seed)                       │  │   │  ladder                  │
+ │  │      -> Preamble(source, line_offset)        │  │   │  code_r1                 │
+ │  │ ③ per graded test, longest-input-first       │  │   │  extractability  w=0.1   │
+ │  │      ┌─────────── THE SEAM ──────────────┐   │  │   │                          │
+ │  │      │ Sandbox (Protocol)                │   │  │   │  never reads             │
+ │  │      │  .run(source, stdin_text,         │   │  │   │  public_results          │
+ │  │      │       timeout_seconds)            │   │  │   │        [ADR-0013]        │
+ │  │      │    -> SandboxResult               │   │  │   └──────────────────────────┘
+ │  │      ├── FirejailSandbox    training     │   │  │              ▲
+ │  │      ├── SubprocessSandbox  CI/dev       │   │  │              │
+ │  │      └── FakeSandbox        tests        │   │  │              │
+ │  │      └──────────────────────────────────┘   │  │              │
+ │  │ ④ _outcome(): timeout → truncation → exit   │  │              │
+ │  │      outputs_match(a, e, tolerance) -> bool │  │              │
+ │  │ ⑤ on TIMEOUT abandon rest, record SKIPPED   │  │              │
+ │  │ ⑥ public tests, same way, separate field    │  │              │
+ │  └──────────────────────────────────────────────┘  │              │
+ └────────────────────────┬───────────────────────────┘              │
+                          │ VerificationReport                       │
+                          │   problem_id, extraction,                │
+                          │   graded_results, public_results         │
+                          ▼                                          │
+              + completion_token_count                               │
+              + completion_was_truncated        ══▶ RolloutOutcome ──┘
+                (sprint 3: trl_adapter supplies these)
+
+ ┌──────────────────────────────────────────────────────────────────────────────────┐
+ │ OUTSIDE THE LOOP                                                                 │
+ │  verify_sandbox_or_raise(sandbox, timeout_seconds) -> None       [behavior §9.3] │
+ │    4 hostile programs → each with its OWN containment predicate → RuntimeError    │
+ │    naming the failed check. 3.13 s against real firejail.                         │
+ └──────────────────────────────────────────────────────────────────────────────────┘
+```
+
+Inside `FirejailSandbox.run` — the three kill layers ADR-0014 leaves standing:
+
+```
+  source:str ──▶ tmpdir/{solution.py, stdin.txt, stderr.txt}
+                     │
+     timeout --kill-after=1.0 <timeout_seconds>          ① SIGTERM at the limit
+       firejail --quiet --private --noprofile            ② SIGKILL after the grace
+                --noroot --seccomp=socket
+                --rlimit-{nproc,nofile,fsize,as}
+         python3 solution.py
+                     │
+       stdout=PIPE ──▶ _read_capped()  bounded reader    ③ killpg backstop
+         stops at stdout_cap_bytes+1, then kills            (deadline + slack)
+       stdin, stderr = FILES  ⇒ only one pipe ⇒ no deadlock
+                     │
+                     ▼  SandboxResult(stdout, stderr, exit_code, duration,
+                                      timed_out, stdout_was_truncated)
+```
+
+### 2.3 The type contract at each boundary
+
+| Boundary | Carries |
+| --- | --- |
+| Agent → Verifier | `str` completion + `Problem` |
+| Extraction → Verifier | `Extraction(code, fence, parsed)` — fence and parse **never collapsed** |
+| Verifier → Sandbox | `(source, stdin_text, timeout_seconds)` — text, never a path |
+| Sandbox → Verifier | `SandboxResult` — `exit_code=None` distinct from `timed_out` |
+| Verifier → Scorer | `VerificationReport` — **not a reward** |
+| Adapter → Rewards | `RolloutOutcome` — the one type all six consume |
+
+The asymmetry in the last two rows is the whole of ADR-0004: the verifier's output is not a
+reward and the scorer's input is not an action, with `RolloutOutcome` between them. That is
+why one execution feeds all six reward functions instead of six executions feeding one each —
+and it is what makes the counterfactual curves in §4 free rather than a second pass.
+
 
 ---
 
