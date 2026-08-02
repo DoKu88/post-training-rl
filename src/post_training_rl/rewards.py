@@ -59,7 +59,7 @@ def binary_reward(outcome: RolloutOutcome) -> float:
     DeepCoder/rLLM `check_correctness` -> `all(passed)`; DeepSeek-R1's rule-based rewards
     (arXiv:2501.12948). The default, and the baseline every other entry is compared against.
     """
-    results = _graded(outcome)
+    results = _graded_results(outcome)
     if not results:
         return 0.0
     return 1.0 if all(_passed(result) for result in results) else 0.0
@@ -67,12 +67,12 @@ def binary_reward(outcome: RolloutOutcome) -> float:
 
 def pass_rate_reward(outcome: RolloutOutcome) -> float:
     """The fraction of graded tests that passed. open-r1 `code_reward`."""
-    return _pass_rate(_graded(outcome))
+    return _pass_rate(_graded_results(outcome))
 
 
 def binary_threshold_reward(outcome: RolloutOutcome) -> float:
     """1.0 when the pass rate exceeds 0.99, else 0.0. open-r1 `binary_code_reward`."""
-    return 1.0 if _pass_rate(_graded(outcome)) > _PASS_RATE_THRESHOLD else 0.0
+    return 1.0 if _pass_rate(_graded_results(outcome)) > _PASS_RATE_THRESHOLD else 0.0
 
 
 def ladder_reward(outcome: RolloutOutcome) -> float:
@@ -83,7 +83,7 @@ def ladder_reward(outcome: RolloutOutcome) -> float:
     since the trainer passes `trainer_state` and its `global_step` to every reward function,
     but it is not part of the first run.
     """
-    results = _graded(outcome)
+    results = _graded_results(outcome)
     if not _has_code(outcome) or not outcome.report.extraction.parsed:
         return 0.0
     if not any(_ran(result) for result in results):
@@ -99,7 +99,7 @@ def code_r1_reward(outcome: RolloutOutcome) -> float:
     """
     if not _has_code(outcome):
         return _CODE_R1_NO_CODE
-    results = _graded(outcome)
+    results = _graded_results(outcome)
     if results and all(_passed(result) for result in results):
         return _CODE_R1_CORRECT
     return _CODE_R1_WRONG
@@ -128,14 +128,15 @@ REWARD_FUNCTIONS: dict[str, RewardFn] = {
 }
 
 
-def _graded(outcome: RolloutOutcome) -> Sequence[TestResult]:
+def _graded_results(outcome: RolloutOutcome) -> Sequence[TestResult]:
     """The graded results, refusing the one state that can only be an apparatus failure."""
     report = outcome.report
     if not report.graded_results and _has_code(outcome):
         raise ValueError(
             f"no graded results for a rollout with recovered code, problem "
-            f"{report.problem_id!r} — the dataset builder guarantees at least one graded "
-            f"test, so this is an apparatus failure rather than a model outcome"
+            f"{report.problem_id!r} — the dataset builder drops problems under "
+            f"tests.min_tests_required, so this is an apparatus failure rather than a "
+            f"model outcome"
         )
     return report.graded_results
 

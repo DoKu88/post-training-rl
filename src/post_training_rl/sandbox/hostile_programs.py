@@ -26,6 +26,11 @@ NETWORK_CONNECTION = (
     "print('connected')\n"
 )
 
+# What NETWORK_CONNECTION prints if it got through. Defined beside the program rather than
+# beside the check that looks for it: if the program's wording changed and the check kept
+# the old string, the check would silently pass forever.
+NETWORK_SUCCESS_MARKER = "connected"
+
 # Must be truncated by the reader in the parent. Large writes rather than many small ones,
 # so the cap is reached quickly enough to be observed before the timeout fires. Pipe
 # capacity is 64 KiB and --rlimit-fsize does not apply to pipes, so nothing but the reader

@@ -14,16 +14,20 @@ from post_training_rl.sandbox.hostile_programs import (
     FORK_BOMB,
     INFINITE_LOOP,
     NETWORK_CONNECTION,
+    NETWORK_SUCCESS_MARKER,
     OUTPUT_FLOOD,
 )
 from post_training_rl.types import SandboxResult
 
 # Short on purpose: the self-test proves containment, not throughput, and the infinite loop
-# has to actually run out the clock. The production timeout would make startup wait ten
-# seconds to learn something two proves.
+# has to run the clock out. Using the production timeout would make startup wait ten seconds
+# for an answer two seconds gives.
+#
+# This is a behaviour-governing literal outside config/verifier.yaml, which the sprint's
+# definition of done otherwise forbids. It is here because task 8 fixes the signature as
+# `verify_sandbox_or_raise(sandbox)` with nowhere to pass config; reconciling the two needs
+# a spec amendment rather than a code change.
 _SELF_TEST_TIMEOUT_SECONDS = 2.0
-
-_NETWORK_SUCCESS_MARKER = "connected"
 
 
 @dataclass(frozen=True)
@@ -33,22 +37,28 @@ class _ContainmentCheck:
     is_contained: Callable[[SandboxResult], bool]
 
 
-def _survived(result: SandboxResult) -> bool:
-    """Whether the program ran to a clean finish — which for a hostile program is a failure."""
-    return not result.timed_out and result.exit_code == 0
-
-
+# Each program has its OWN containment mechanism, and each predicate insists on that
+# mechanism rather than accepting a timeout as proof. Only the infinite loop is *supposed*
+# to be stopped by the clock. If the others were allowed to pass by timing out, a sandbox
+# with nothing working except the wall-clock timer would sail through this self-test — which
+# is the exact failure it exists to catch.
 _CHECKS = (
+    # Stopped by the timer, by definition.
     _ContainmentCheck("infinite loop", INFINITE_LOOP, lambda r: r.timed_out),
-    _ContainmentCheck("fork bomb", FORK_BOMB, lambda r: not _survived(r)),
+    # Stopped by --rlimit-nproc: fork() raises, Python exits non-zero, and it does so
+    # promptly. A fork bomb that merely runs out the clock was NOT capped.
+    _ContainmentCheck(
+        "fork bomb", FORK_BOMB, lambda r: not r.timed_out and r.exit_code != 0
+    ),
+    # Stopped by --seccomp=socket: the connect raises immediately. A run that times out
+    # proves nothing — the connection may simply have been blocking.
     _ContainmentCheck(
         "network connection",
         NETWORK_CONNECTION,
-        lambda r: _NETWORK_SUCCESS_MARKER not in r.stdout,
+        lambda r: not r.timed_out and NETWORK_SUCCESS_MARKER not in r.stdout,
     ),
-    _ContainmentCheck(
-        "output flood", OUTPUT_FLOOD, lambda r: r.stdout_was_truncated or r.timed_out
-    ),
+    # Stopped by the reader's cap. Truncation is the guarantee; timing out is not.
+    _ContainmentCheck("output flood", OUTPUT_FLOOD, lambda r: r.stdout_was_truncated),
 )
 
 

@@ -11,20 +11,31 @@ from post_training_rl.startup import verify_sandbox_or_raise
 from post_training_rl.types import SandboxResult
 
 
-def _contained(
+def _result(
     stdout: str = "",
-    exit_code: int | None = None,
-    timed_out: bool = True,
-    truncated: bool = True,
+    exit_code: int | None = 1,
+    timed_out: bool = False,
+    truncated: bool = False,
 ) -> SandboxResult:
     return SandboxResult(
         stdout=stdout,
         stderr="",
         exit_code=exit_code,
-        duration_seconds=1.0,
+        duration_seconds=0.05,
         timed_out=timed_out,
         stdout_was_truncated=truncated,
     )
+
+
+# One per check, in `_CHECKS` order, each showing the mechanism that program is supposed to
+# be stopped by. Only the infinite loop is stopped by the clock — scripting a timeout for
+# the other three would pass a sandbox whose only working component is the wall-clock timer.
+_CONTAINED = [
+    _result(timed_out=True, exit_code=None),  # infinite loop: killed by the timer
+    _result(exit_code=1),  # fork bomb: --rlimit-nproc makes fork() raise
+    _result(exit_code=1),  # network: --seccomp=socket makes connect() raise
+    _result(truncated=True, exit_code=None),  # flood: capped by the reader
+]
 
 
 def _escaped() -> SandboxResult:
@@ -40,7 +51,7 @@ def _escaped() -> SandboxResult:
 
 
 def test_self_test_passes_when_all_programs_contained():
-    sandbox = FakeSandbox([_contained() for _ in range(4)])
+    sandbox = FakeSandbox(_CONTAINED)
 
     verify_sandbox_or_raise(sandbox)  # returns, and does not raise
 
@@ -48,8 +59,11 @@ def test_self_test_passes_when_all_programs_contained():
 
 
 def test_self_test_raises_naming_the_uncontained_program():
-    # The fork bomb runs to completion — a sandbox with no process cap.
-    sandbox = FakeSandbox([_contained(), _escaped(), _contained(), _contained()])
+    # The fork bomb runs to completion — a sandbox with no process cap. The message must say
+    # which containment property is missing, not that something went wrong.
+    scripted = list(_CONTAINED)
+    scripted[1] = _escaped()
+    sandbox = FakeSandbox(scripted)
 
     with pytest.raises(RuntimeError) as raised:
         verify_sandbox_or_raise(sandbox)
