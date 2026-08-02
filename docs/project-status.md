@@ -1,6 +1,6 @@
 # Project status
 
-**Last updated:** 2026-08-02 · **Phase:** sprint 1 in progress — task 6 of 8 complete
+**Last updated:** 2026-08-02 · **Phase:** sprint 1 in progress — task 7 of 8 complete
 
 A running record of what exists, what is decided, and what happens next. Update it whenever a
 sprint task completes, a decision is made, or an unknown gets measured.
@@ -10,8 +10,8 @@ sprint task completes, a decision is made, or an unknown gets measured.
 ## One-line summary
 
 Every design decision is made and written down. **Sprint 1 is under way** — scaffold, types, config, comparator, extraction, and both sandbox
-adapters and the verifier are in, with containment verified. The next action is
-`/write-code docs/plans/sprint-01.md, task 7`.
+adapters, the verifier and the reward registry are in. The next action is
+`/write-code docs/plans/sprint-01.md, task 8`.
 
 ---
 
@@ -24,7 +24,7 @@ adapters and the verifier are in, with containment verified. The next action is
 | Vocabulary | ✅ `CONTEXT.md` |
 | Design | ✅ 5 documents — loop, modules, behaviour, rewards, model |
 | Plan | ✅ Roadmap + sprint 1 fully specified |
-| **Code** | 🚧 **Sprint 1, task 6 of 8** — 41 unit + 4 subprocess + 9 containment green |
+| **Code** | 🚧 **Sprint 1, task 7 of 8** — 61 unit + 4 subprocess + 9 containment green |
 | Environment | ⚠️ Conda env `post-train`, one known defect · firejail 0.9.74 installed |
 
 ---
@@ -83,7 +83,7 @@ Both include a blunt "risks and unknowns" section listing what could **not** be 
 ```bash
 conda activate post-train
 # then, one task per invocation, reviewed between each:
-/write-code docs/plans/sprint-01.md, task 7
+/write-code docs/plans/sprint-01.md, task 8
 ```
 
 ### Sprint 1 task board
@@ -96,7 +96,7 @@ conda activate post-train
 | 4 | Sandbox seam + fake + subprocess | 4 integration | ✅ |
 | 5 | Firejail + containment | 9 integration | ✅ reviewed |
 | 6 | Verifier | 13 unit | ✅ reviewed |
-| 7 | Reward registry | 20 unit | ☐ |
+| 7 | Reward registry | 20 unit | ✅ |
 | 8 | Startup self-test | 2 unit | ☐ |
 
 **Sprint 1 gate:** all suites green · containment verified in CI with firejail · a rollout
