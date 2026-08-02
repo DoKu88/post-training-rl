@@ -76,9 +76,16 @@ sudo apt update && sudo apt install firejail
 firejail --version        # developed against 0.9.74
 ```
 
-Containment tests (`pytest -m containment`) **skip loudly** without it rather than passing
-vacuously — a containment test that passes because it did not run is false assurance about the
-only thing protecting the host.
+The wall-clock limit is enforced by **`timeout(1)`** (GNU coreutils, present on every
+mainstream Linux) wrapping the firejail invocation, rather than by firejail's own `--timeout`.
+That flag was measured at a flat ~2 s per execution regardless of its value, and it cannot
+distinguish its own timeout from an uncaught exception — see
+[ADR-0014](docs/adr/0014-external-wall-clock-timer.md). Both binaries are checked at
+construction; a missing one raises naming it.
+
+Containment tests (`pytest -m containment`) **skip loudly** without firejail rather than
+passing vacuously — a containment test that passes because it did not run is false assurance
+about the only thing protecting the host.
 
 A weaker `subprocess` backend exists for CI and for development machines without firejail. It
 provides resource limits but **not** network isolation or a private filesystem, and it is not

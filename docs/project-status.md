@@ -1,6 +1,6 @@
 # Project status
 
-**Last updated:** 2026-08-02 · **Phase:** sprint 1 in progress — task 4 of 8 complete
+**Last updated:** 2026-08-02 · **Phase:** sprint 1 in progress — task 5 of 8 complete
 
 A running record of what exists, what is decided, and what happens next. Update it whenever a
 sprint task completes, a decision is made, or an unknown gets measured.
@@ -9,9 +9,9 @@ sprint task completes, a decision is made, or an unknown gets measured.
 
 ## One-line summary
 
-Every design decision is made and written down. **Sprint 1 is under way** — scaffold, types, config, comparator, extraction, and
-the sandbox seam are in. The next action is
-`/write-code docs/plans/sprint-01.md, task 5`.
+Every design decision is made and written down. **Sprint 1 is under way** — scaffold, types, config, comparator, extraction, and both sandbox
+adapters are in, with containment verified. The next action is
+`/write-code docs/plans/sprint-01.md, task 6`.
 
 ---
 
@@ -20,11 +20,11 @@ the sandbox seam are in. The next action is
 | | Status |
 | --- | --- |
 | Research | ✅ Complete — 2,918 lines across two primary-source documents |
-| Decisions | ✅ 13 ADRs |
+| Decisions | ✅ 14 ADRs |
 | Vocabulary | ✅ `CONTEXT.md` |
 | Design | ✅ 5 documents — loop, modules, behaviour, rewards, model |
 | Plan | ✅ Roadmap + sprint 1 fully specified |
-| **Code** | 🚧 **Sprint 1, task 4 of 8** — 28 unit + 4 subprocess tests green |
+| **Code** | 🚧 **Sprint 1, task 5 of 8** — 28 unit + 4 subprocess + 9 containment green |
 | Environment | ⚠️ Conda env `post-train`, one known defect · firejail 0.9.74 installed |
 
 ---
@@ -57,6 +57,7 @@ Both include a blunt "risks and unknowns" section listing what could **not** be 
 | [0011](adr/0011-reward-registry.md) | Reward functions are a config-selected registry; `binary` is the default |
 | [0012](adr/0012-syntax-gated-extraction.md) | Syntax-gated extraction; fence and parse recorded separately |
 | [0013](adr/0013-public-tests-are-a-diagnostic.md) | Public tests are a diagnostic, never a reward input |
+| [0014](adr/0014-external-wall-clock-timer.md) | `timeout(1)` outside firejail, not `--timeout` — 71× faster, and unambiguous. Amends 0005 |
 
 ### Design — `docs/design/`
 
@@ -82,7 +83,7 @@ Both include a blunt "risks and unknowns" section listing what could **not** be 
 ```bash
 conda activate post-train
 # then, one task per invocation, reviewed between each:
-/write-code docs/plans/sprint-01.md, task 5
+/write-code docs/plans/sprint-01.md, task 6
 ```
 
 ### Sprint 1 task board
@@ -93,7 +94,7 @@ conda activate post-train
 | 2 | Comparator | 12 unit | ✅ |
 | 3 | Extraction cascade | 16 unit | ✅ reviewed |
 | 4 | Sandbox seam + fake + subprocess | 4 integration | ✅ |
-| 5 | Firejail + containment | 9 integration | ☐ **review after** |
+| 5 | Firejail + containment | 9 integration | ✅ reviewed |
 | 6 | Verifier | 13 unit | ☐ |
 | 7 | Reward registry | 20 unit | ☐ |
 | 8 | Startup self-test | 2 unit | ☐ |
@@ -137,7 +138,7 @@ sprint 3.**
 | Private/generated share per problem | The guard deferred in ADR-0009 | Sprint 2 |
 | Prompt token-length distribution | `max_prompt_length` and the drop rate | Sprint 2 |
 | Filter drop rate per rule | Whether the multi-output regex over-matches (expect ~25%) | Sprint 2 |
-| Sandbox throughput | Whether a thread pool suffices, or firejail startup forces a process pool | Sprint 1 |
+| ~~Sandbox throughput~~ | **MEASURED, sprint 1:** 0.029 s/execution after ADR-0014 (was 2.03 s). A thread pool suffices | ✅ |
 | Fence and parse rates | Whether `extractability` earns its keep, and whether prefill is worth adopting | Sprint 3 |
 | Base-model pass@1 | The only reference point that exists, since ADR-0010 broke comparability | Sprint 4 |
 
