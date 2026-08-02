@@ -78,6 +78,9 @@ rather than improvising a different design.
 
 ## Reference material
 
+- **[`docs/project-status.md`](docs/project-status.md)** — what is done, what is next, what is
+  still unmeasured. **Start here**, and update it whenever a task completes or an unknown gets
+  measured.
 - **[`CONTEXT.md`](CONTEXT.md)** — the glossary. Terms only, no implementation detail.
 - **[`docs/adr/`](docs/adr/)** — every significant decision and why it was made. **Read the
   relevant ADR before changing behaviour in that area**, and say so explicitly if your work

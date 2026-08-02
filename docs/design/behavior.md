@@ -155,8 +155,10 @@ adapter → smoke.
    never exhausts memory in the calling process. Pipe capacity is 64 KiB and the file-size
    rlimit does not apply to pipes, so the cap is enforced by the reader.
 8. A program that writes files without limit is capped.
-9. Execution is deterministic: the same source and input produce the same output across runs,
-   because the hash seed is fixed and a seeding preamble is prepended (ADR-0008).
+9. The **execution environment** is deterministic: `PYTHONHASHSEED` is fixed, so `set` and
+   `dict` iteration order is stable across runs. This is the sandbox's half of ADR-0008. It
+   does **not** modify the source it was given — seeding the program is the verifier's half
+   (§5), because the sandbox's contract is "run exactly this".
 
 ### Refuses
 
@@ -182,6 +184,8 @@ adapter → smoke.
 ### Does
 
 1. Extracts code, prepends the determinism preamble, and runs each graded test in order.
+   Prepending is the verifier's half of ADR-0008 — the sandbox fixes the environment (§4), the
+   verifier seeds the program. Neither may assume the other does it.
 2. Classifies each test as passed, wrong output, runtime error, timed out, or skipped.
 3. Runs the problem's public tests separately and reports them separately. No reward reads
    them; their pass rate is logged each step as ground truth that does not move with whatever

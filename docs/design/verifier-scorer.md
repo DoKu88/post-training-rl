@@ -184,9 +184,11 @@ Implementation obligations:
   by a signal for any other reason reports `exit_code = None` with `timed_out = False`, and
   the verifier maps that to `RUNTIME_ERROR` — so "hung" and "crashed" never collapse into one
   outcome.
-- **Prepend the determinism preamble** (ADR-0008) and record the line offset, so a traceback
-  in `stderr_excerpt` can be mapped back to the model's own line numbers.
-- `PYTHONHASHSEED` is passed through the environment, which firejail preserves.
+- **Set `PYTHONHASHSEED` in the child's environment**, which firejail preserves. This is the
+  sandbox's half of ADR-0008 — it guarantees a deterministic *execution environment*.
+- **Do not modify the source it was given.** The seeding preamble is the verifier's half
+  (§6), because the sandbox's contract is "run exactly this program". The startup self-test
+  runs hostile programs through this same sandbox and must get them unmodified.
 
 ### `SubprocessSandbox`
 

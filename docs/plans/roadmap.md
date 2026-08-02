@@ -82,7 +82,8 @@ loop is filled by three modules and only one of them is being built.
 
 ### Gate
 
-- Every unit test green (~63), running in seconds with no subprocess.
+- Every unit test green — **63**, sub-second, no subprocess. Plus 4 subprocess-backend and 9
+  containment tests, each behind its own marker.
 - Containment verified against hostile programs in CI with firejail installed.
 - A rollout can be scored end to end by all six implemented reward functions **with no model
   loaded**.

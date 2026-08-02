@@ -35,13 +35,29 @@ Everything else — including `trl`, `peft`, `datasets`, `transformers` — is *
 this sprint** and must not be imported. If a task appears to need one, that is a signal the
 task is wrong.
 
-**Commands:**
+**Three suites, separated by marker.** `pyproject.toml` registers both markers and excludes
+them by default, so the command you run on every red-green cycle stays sub-second and spawns
+nothing:
+
+```toml
+[tool.pytest.ini_options]
+markers = [
+    "subprocess_backend: spawns real subprocesses",
+    "containment: requires firejail",
+]
+addopts = '-m "not containment and not subprocess_backend"'
+```
 
 ```bash
 conda activate post-train
-pytest -q                       # fast suite
-pytest -q -m containment        # sandbox suite; requires firejail
+pytest -q                         # 63 unit tests, no subprocess, sub-second
+pytest -q -m subprocess_backend   # 4 tests, seconds
+pytest -q -m containment          # 9 tests, requires firejail
 ```
+
+**Tests pass a short `timeout_seconds` explicitly — 1.0, never the production 10.0.** One
+timeout test at the production value would dominate the suite it lives in. 1.0 s is the floor,
+because firejail's `--timeout` has one-second granularity.
 
 **Not tested in this sprint, deliberately** (confirmed seam set, `behavior.md`): config
 loading, log emission, and `SubprocessSandbox`'s hostile cases. Do not add tests for these.
@@ -86,9 +102,10 @@ config/reward.yaml
 ### Public interface
 
 `types.py` — frozen dataclasses and enums exactly as specified in
-[`verifier-scorer.md`](../design/verifier-scorer.md) §2: `TestPool`, `TestOutcome`, `Fence`,
-`TestCase`, `Problem`, `TestResult`, `Extraction`, `VerificationReport`, `RolloutOutcome`,
-`SandboxResult`.
+[`verifier-scorer.md`](../design/verifier-scorer.md) **§2**: `TestPool`, `TestOutcome`,
+`Fence`, `TestCase`, `Problem`, `TestResult`, `Extraction`, `VerificationReport`,
+`RolloutOutcome` — plus `SandboxResult`, which is specified in **§3** alongside the `Sandbox`
+protocol but lives here with the other types.
 
 ```python
 def load_verifier_config(path: Path) -> VerifierConfig: ...
@@ -102,6 +119,10 @@ moving and the stage rule defers validation until it stops.
 `timeout_seconds`, `stdout_cap_bytes`, `stderr_excerpt_bytes`, `worker_threads`,
 `determinism.seed`, `tests.max_tests_per_rollout`, `tests.min_tests_required`,
 `extraction.prefill`. No literal governing behaviour appears anywhere in code.
+
+**Only two of the six config files in [`verifier-scorer.md` §10](../design/verifier-scorer.md)
+are created here.** `dataset.yaml` arrives in sprint 2; `training.yaml` and `model/*.yaml` in
+sprint 3. The design is unchanged — this sprint simply needs a subset.
 
 ### Tests
 
@@ -216,8 +237,11 @@ A sandbox accepts program **source text** — not a path — delivers stdin, cap
 stderr, and reports duration, exit status, timeout, and truncation. Callers never learn that
 temporary files are involved.
 
-Execution is deterministic: the same source and input give the same output across runs,
-because `PYTHONHASHSEED` is fixed and a seeding preamble is prepended.
+It sets `PYTHONHASHSEED` in the child's environment, so `set` and `dict` iteration order is
+stable across runs. **It does not modify the source it was given** — seeding the *program* is
+the verifier's half of ADR-0008 (task 6). The sandbox's contract is "run exactly this", and
+the startup self-test depends on that: it runs hostile programs through this same sandbox and
+must get them unmodified.
 
 Infrastructure failures raise. A program that crashes, hangs, or floods is a normal result.
 
@@ -227,9 +251,10 @@ Source of truth: [`behavior.md`](../design/behavior.md) §4 items 1–3, 9, 11;
 ### Files
 
 ```
-src/post_training_rl/sandbox/__init__.py     # Sandbox Protocol, preamble builder
+src/post_training_rl/sandbox/__init__.py     # Sandbox Protocol
 src/post_training_rl/sandbox/fake.py         # FakeSandbox — scripted results + call log
 src/post_training_rl/sandbox/subprocess_.py  # SubprocessSandbox
+tests/test_sandbox_subprocess.py
 ```
 
 ### Public interface
@@ -245,14 +270,11 @@ sandbox was *not* invoked.
 
 ### Unit tests
 
-| Test | Asserts |
-| --- | --- |
-| `test_preamble_seeds_random_and_hash` | The built preamble contains the configured seed and is prepended before the model's source |
-| `test_preamble_line_offset_is_recorded` | The offset needed to map a traceback back to the model's own line numbers |
+**None.** The `Sandbox` protocol is a type declaration, and `FakeSandbox` is a fixture
+exercised throughout task 6. There is nothing here to assert that is not covered by the
+integration tests below.
 
-`FakeSandbox` itself gets no tests — it is exercised throughout task 6.
-
-### Integration tests — marked `subprocess_backend`
+### Integration tests — marked `subprocess_backend`, in `tests/test_sandbox_subprocess.py`
 
 | Test | Asserts |
 | --- | --- |
@@ -266,7 +288,13 @@ sandbox was *not* invoked.
 
 ### Done when
 
-Both unit tests and all four integration tests pass. `Sandbox` has exactly one method.
+All four integration tests pass. `Sandbox` has exactly one method, and nothing in
+`sandbox/` rewrites the source it is handed.
+
+These four names are **reused verbatim in task 5** for the firejail adapter. They live in
+separate modules — `tests/test_sandbox_subprocess.py` and `tests/test_sandbox_firejail.py` —
+because two same-named tests in one module means the second silently shadows the first, and a
+test that quietly stops existing is worse than one that fails.
 
 ---
 
@@ -293,6 +321,7 @@ Source of truth: [ADR-0005](../adr/0005-firejail-sandbox.md),
 
 ```
 src/post_training_rl/sandbox/firejail.py
+tests/test_sandbox_firejail.py        # separate module — see task 4's done-when
 tests/fixtures/hostile_programs.py    # shared with task 8
 ```
 
@@ -352,12 +381,21 @@ The guarantees that matter:
 - **It assigns no rewards** and holds no opinion about what an outcome is worth.
 - **It raises only on infrastructure failure.**
 
+It also owns the **seeding preamble** — the verifier's half of ADR-0008. The sandbox fixes the
+environment (`PYTHONHASHSEED`, task 4); the verifier seeds the program. Neither may assume the
+other does it, because if both do the preamble appears twice, and if neither does determinism
+vanishes with no symptom except reward noise inside groups.
+
 Source of truth: [`behavior.md`](../design/behavior.md) §5,
-[ADR-0004](../adr/0004-verifier-scorer-split.md).
+[ADR-0004](../adr/0004-verifier-scorer-split.md),
+[ADR-0008](../adr/0008-deterministic-execution.md).
 
 ### Files
 
-`src/post_training_rl/verifier.py`
+```
+src/post_training_rl/verifier.py      # Verifier, and the preamble builder it owns
+tests/test_verifier.py
+```
 
 ```python
 class Verifier:
@@ -382,12 +420,14 @@ because the interface is the test surface. Fan out over a `ThreadPoolExecutor` �
 | `test_truncated_stdout_is_still_compared` | |
 | `test_public_tests_are_reported_separately` | `public_results` populated, `graded_results` unaffected |
 | `test_determinism_preamble_is_prepended` | Inspect the source `FakeSandbox` received |
+| `test_preamble_seeds_random_and_hash` | The built preamble contains the configured seed and seeds both `random` and, when importable, numpy |
+| `test_preamble_line_offset_is_recorded` | The offset needed to map a traceback back to the model's own line numbers |
 | `test_batch_preserves_input_order` | |
 | `test_infrastructure_error_propagates` | A raising sandbox does **not** become a `TestOutcome` |
 
 ### Done when
 
-All eleven pass in under a second — no subprocess should be spawned by this file's tests.
+All thirteen pass in under a second — no subprocess should be spawned by this file's tests.
 
 ---
 
@@ -477,8 +517,9 @@ Both pass, and running the self-test against the real `FirejailSandbox` succeeds
 
 ## Sprint definition of done
 
-- [ ] `pytest -q` green — roughly 60 unit tests, no subprocesses, runs in seconds
-- [ ] `pytest -q -m containment` green in CI with firejail installed
+- [ ] `pytest -q` green — **63 unit tests**, no subprocesses, sub-second
+- [ ] `pytest -q -m subprocess_backend` green — **4 tests**
+- [ ] `pytest -q -m containment` green in CI with firejail installed — **9 tests**
 - [ ] A rollout can be scored end to end by all six reward functions with **no model loaded**
 - [ ] Every constant lives in `config/verifier.yaml`; no behaviour-governing literal in code
 - [ ] Nothing imports `trl`, `transformers`, `peft`, or `datasets`
