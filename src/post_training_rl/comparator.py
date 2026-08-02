@@ -10,24 +10,30 @@ Do not substitute LiveCodeBench's comparator, which is case-sensitive, line-stri
 exact `Decimal` comparison. Under its semantics DeepMind's own gold solutions score zero.
 """
 
-# Absolute, not relative — a difference of 1e-5 is accepted however large the operands are.
-# Inherited from the reference implementation and preserved deliberately. It is lax at small
-# magnitudes, and it combines with the second sharp edge below: the reference parses integers
-# as 32-bit, so values beyond that range reach the float path and lose precision, which makes
-# two distinct very large integers compare equal.
-ABSOLUTE_FLOAT_TOLERANCE = 1e-5
+def outputs_match(actual: str, expected: str, absolute_tolerance: float) -> bool:
+    """Compare two program outputs under CodeContests semantics.
 
+    `absolute_tolerance` is absolute, never relative — a difference of that size is accepted
+    however large the operands are. It comes from `comparator.absolute_float_tolerance` in
+    config rather than a literal here, because it decides what counts as a correct answer
+    and two runs that graded differently must be diffable as files.
 
-def outputs_match(actual: str, expected: str) -> bool:
-    """Compare two program outputs under CodeContests semantics."""
+    Two sharp edges ride on it, both inherited from the reference implementation and
+    preserved deliberately: it is lax at small magnitudes, and the reference parses integers
+    as 32-bit, so values beyond that range reach the float path and lose precision — two
+    distinct very large integers therefore compare equal.
+    """
     actual_tokens = actual.split()
     expected_tokens = expected.split()
     if len(actual_tokens) != len(expected_tokens):
         return False
-    return all(_tokens_match(a, e) for a, e in zip(actual_tokens, expected_tokens))
+    return all(
+        _tokens_match(a, e, absolute_tolerance)
+        for a, e in zip(actual_tokens, expected_tokens)
+    )
 
 
-def _tokens_match(actual: str, expected: str) -> bool:
+def _tokens_match(actual: str, expected: str, absolute_tolerance: float) -> bool:
     if actual.lower() == expected.lower():
         return True
     # behavior.md §1.3 phrases the numeric path as "when *either* side parses as a float".
@@ -37,7 +43,7 @@ def _tokens_match(actual: str, expected: str) -> bool:
     expected_value = _as_float(expected)
     if actual_value is None or expected_value is None:
         return False
-    return abs(actual_value - expected_value) <= ABSOLUTE_FLOAT_TOLERANCE
+    return abs(actual_value - expected_value) <= absolute_tolerance
 
 
 def _as_float(token: str) -> float | None:

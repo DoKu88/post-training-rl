@@ -1,8 +1,10 @@
-# Which reward functions run, and at what weight. The shapes themselves live in the registry
-# in code — each carries the published source it came from; changing one of those constants
-# would make it a different function rather than tune this one (ADR-0011).
+# Which reward functions run, at what weight, and the numbers that define their shapes.
 #
-# Nothing in sprint 1 reads this file. The TRL adapter that consumes it arrives in sprint 3.
+# Each shape below reproduces a published implementation, named in its comment. Treat a
+# change to one as defining a NEW reward rather than tuning an existing one: `binary` with a
+# different threshold is not a tuned `binary`, and a run using it is not comparable to one
+# that did not. They live here rather than in code so that two runs which behaved
+# differently can be diffed as files (ADR-0011).
 
 # Exactly one primary drives training. Weights are not a probability distribution and need
 # not sum to 1: GRPO normalises advantage by the group's standard deviation, which is
@@ -25,3 +27,38 @@ shadow_log:
   - binary_threshold
   - ladder
   - code_r1
+
+shapes:
+  # open-r1 `binary_code_reward`. A float-comparison guard, not a real tolerance: with <=15
+  # integer test counts the pass rate cannot accumulate error near 1.0.
+  pass_rate_threshold: 0.99
+
+  # code-r1 `coder1/__init__.py`, the only surveyed implementation training on this exact
+  # task — deepmind/code_contests, Python, stdin/stdout, single turn. Binary at heart, with
+  # a format penalty bolted on, so failing to produce code is distinguishable from
+  # producing wrong code. The -1.1 / +0.1 / +1.1 spacing was never ablated.
+  code_r1:
+    no_code: -1.1
+    wrong: 0.1
+    correct: 1.1
+
+  # This project's own construction, shaped like DHRCL's hierarchical decomposition
+  # (arXiv:2607.26457). No external validation — the entry with the weakest evidence in the
+  # registry. Ships unannealed.
+  ladder:
+    parses: 0.05
+    runs: 0.10
+    pass_weight: 0.90
+
+  # ADR-0012. The invariant that must survive any retuning: the parse swing (2 x parse_term
+  # = 1.2) must exceed the fence swing (tagged - none = 0.8), so the worst parsing rollout
+  # still outranks the best non-parsing one. A beautifully fenced broken program must never
+  # beat a bare working one — test_extractability_parsing_always_outranks_non_parsing
+  # asserts this over all sixteen pairs and will fail if a change here breaks it.
+  extractability:
+    parse_term: 0.6
+    fence:
+      tagged: 0.4
+      untagged: 0.2
+      other_tag: 0.0
+      none: -0.4

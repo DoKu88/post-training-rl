@@ -16,7 +16,7 @@ forward.
 | `-m subprocess_backend` green | 4 | ✅ **4 passed in 1.05 s** |
 | `-m containment` green with firejail | 9 | ✅ **9 passed in 2.33 s** |
 | A rollout scored end to end by all six rewards, no model loaded | — | ✅ §4 below |
-| Every constant in `config/verifier.yaml` | — | ⚠️ four exceptions, §6.1 |
+| Every behaviour-governing constant in config | — | ✅ see §6.1 |
 | Nothing imports `trl`, `transformers`, `peft`, `datasets` | — | ✅ stdlib + `pyyaml` + `pytest` only |
 
 Per-file test counts match the plan exactly:
@@ -211,20 +211,45 @@ Each predicate now insists on the mechanism that program is meant to be stopped 
 
 Each is deliberate and recorded in code as well as here.
 
-### 6.1 Four behaviour-governing constants live in code, not YAML
+### 6.1 Every tunable now lives in YAML — including some the plan did not enumerate
 
-The DoD says every constant lives in `config/verifier.yaml`. Task 1 enumerates exactly what
-that file carries, and these are not on the list:
+Task 1 enumerated a fixed list for `config/verifier.yaml`, and the first pass kept everything
+else in code. That was revisited: **all behaviour-governing values are now loaded from
+config**, on the grounds that they are research parameters and two runs that graded
+differently must be diffable as files.
 
-| Constant | Where | Why |
-| --- | --- | --- |
-| `ABSOLUTE_FLOAT_TOLERANCE = 1e-5` | `comparator.py` | Task 2's own done-when requires it named in code with a comment |
-| Reward shape values | `rewards.py` | The *identity* of each function, from its published source. Changing one makes a different reward, not a tuned one. Registry entries are `RolloutOutcome -> float` with nowhere to inject config |
-| `_KILL_AFTER_SECONDS`, `_BACKSTOP_SLACK_SECONDS`, `_REAP_TIMEOUT_SECONDS` | `firejail.py` | Post-date task 1's enumeration; introduced by ADR-0014 |
-| `_SELF_TEST_TIMEOUT_SECONDS = 2.0` | `startup.py` | Task 8 fixes the signature as `verify_sandbox_or_raise(sandbox)`, with nowhere to pass config |
+Added to `config/verifier.yaml`:
 
-**Recommendation:** fold the last two rows into `verifier.yaml` in sprint 2, which needs a
-one-line signature amendment to task 8.
+| Key | Was |
+| --- | --- |
+| `sandbox.kill_after_seconds`, `sandbox.backstop_slack_seconds`, `sandbox.reap_timeout_seconds` | ADR-0014's three timers, hardcoded in `firejail.py` |
+| `comparator.absolute_float_tolerance` | `ABSOLUTE_FLOAT_TOLERANCE = 1e-5` in `comparator.py` |
+| `startup.self_test_timeout_seconds` | `_SELF_TEST_TIMEOUT_SECONDS = 2.0` in `startup.py` |
+
+Added to `config/reward.yaml` under `shapes:` — every number defining a reward: the
+`binary_threshold` cut-off, `code_r1`'s three rungs, `ladder`'s three, and `extractability`'s
+parse and fence terms.
+
+Two signature changes follow, both recorded as deviations:
+
+- `outputs_match(actual, expected, absolute_tolerance)` — `verifier-scorer.md` §5 shows two
+  parameters. The verifier passes the configured value.
+- `verify_sandbox_or_raise(sandbox, timeout_seconds)` — task 8 shows one parameter. It takes
+  the float rather than a config object, per "accept the least specific input that works".
+
+The registry is now built by `build_reward_functions(shapes)`, with each entry closing over
+the configured values — the mechanism `verifier-scorer.md` §7 already sanctions for a
+parameterised entry. Every entry stays a plain `RolloutOutcome -> float`, so the
+interchangeability contract is untouched.
+
+**A caution kept in the config file itself:** treat a change to a shape value as defining a
+*new* reward rather than tuning an existing one. `binary_threshold` at 0.95 is not a tuned
+`binary_threshold`; a run using it is not comparable to one that did not. The values ship
+matching their published sources.
+
+What remains in code is not tunable: unit conversions (`_BYTES_PER_MIB`), an I/O buffer size
+(`_READ_CHUNK_BYTES`), and `_TIMEOUT_EXIT_CODE = 124`, which is a GNU coreutils fact rather
+than a choice.
 
 ### 6.2 Indented opening fences are not recognised
 
@@ -274,12 +299,32 @@ A rollout whose tests all time out scores 0.05, tied with a program that crashes
 despite having demonstrably run. `rl-reward-functions.md` §3 defines neither boundary and no
 named test pins it. Wants a spec line, not a code change.
 
-### 7.3 Public tests do not inherit the timeout abort
+### 7.3 Public tests deliberately do NOT inherit the timeout abort — measured, and reversed
 
-A rollout that hangs on graded test 1 still runs its full public suite, costing
-`len(public_tests) × timeout_seconds` on a pool that feeds no reward. `verifier-scorer.md` §6
-describes public tests as running "in the same way" as a separate step, which is what was
-implemented. Worth revisiting — it is pure waste at ~10 s per public test.
+An earlier draft of this report recommended carrying the graded timeout across to public
+tests, to save the 11 s a hung rollout spends there. **Measurement reversed that.**
+
+The 11 s is `timeout_seconds` + `kill_after_seconds` — the full wall-clock limit burned by a
+program that will not finish. Whether that cost buys anything depends on *why* the solution
+is slow:
+
+| Failure mode | Public-test cost | What it yields |
+| --- | --- | --- |
+| Infinite loop | 11 s (times out too) | Nothing. It was never going to finish |
+| Too-slow algorithm, e.g. O(n²) | **0.03 s — passes** | "Algorithmically correct but too slow" |
+
+Graded tests are ordered **longest-input-first** (ADR-0009), so a timeout fires on the
+*largest* input, while public tests are the statement's small examples. Measured directly: an
+O(n²) solution timed out on a 100,000-element graded input and **passed the 3-element public
+test in 0.03 s**.
+
+Carrying the abort would delete exactly that signal — for a 3B model on CodeContests,
+"correct but too slow" is among the most informative diagnostics available — while saving
+nothing in the case where it fires. The worst case is bounded anyway: public tests abort
+internally after their own first timeout, so an infinite-loop rollout pays one extra 11 s, not
+one per test.
+
+**Current behaviour is correct. No change.**
 
 ### 7.4 Smaller notes
 

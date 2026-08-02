@@ -29,6 +29,19 @@ class SandboxConfig:
     stdout_cap_bytes: int
     stderr_excerpt_bytes: int
     worker_threads: int
+    kill_after_seconds: float
+    backstop_slack_seconds: float
+    reap_timeout_seconds: float
+
+
+@dataclass(frozen=True)
+class ComparatorConfig:
+    absolute_float_tolerance: float
+
+
+@dataclass(frozen=True)
+class StartupConfig:
+    self_test_timeout_seconds: float
 
 
 @dataclass(frozen=True)
@@ -50,6 +63,8 @@ class ExtractionConfig:
 @dataclass(frozen=True)
 class VerifierConfig:
     sandbox: SandboxConfig
+    comparator: ComparatorConfig
+    startup: StartupConfig
     determinism: DeterminismConfig
     tests: TestsConfig
     extraction: ExtractionConfig
@@ -62,9 +77,30 @@ class RewardEntry:
 
 
 @dataclass(frozen=True)
+class RewardShapes:
+    """The numbers that define each reward function.
+
+    A change to one of these defines a *new* reward rather than tuning an existing one — a
+    run using different values is not comparable to one that did not. They are loaded rather
+    than hardcoded so two runs that behaved differently can be diffed as files.
+    """
+
+    pass_rate_threshold: float
+    code_r1_no_code: float
+    code_r1_wrong: float
+    code_r1_correct: float
+    ladder_parses: float
+    ladder_runs: float
+    ladder_pass_weight: float
+    parse_term: float
+    fence_terms: Mapping[str, float]  # keyed by Fence value
+
+
+@dataclass(frozen=True)
 class RewardConfig:
     functions: tuple[RewardEntry, ...]
     shadow_log: tuple[str, ...]
+    shapes: RewardShapes
 
 
 def load_verifier_config(path: Path) -> VerifierConfig:
@@ -81,6 +117,21 @@ def load_verifier_config(path: Path) -> VerifierConfig:
             stdout_cap_bytes=_require(document, "sandbox.stdout_cap_bytes", path),
             stderr_excerpt_bytes=_require(document, "sandbox.stderr_excerpt_bytes", path),
             worker_threads=_require(document, "sandbox.worker_threads", path),
+            kill_after_seconds=_require(document, "sandbox.kill_after_seconds", path),
+            backstop_slack_seconds=_require(
+                document, "sandbox.backstop_slack_seconds", path
+            ),
+            reap_timeout_seconds=_require(document, "sandbox.reap_timeout_seconds", path),
+        ),
+        comparator=ComparatorConfig(
+            absolute_float_tolerance=_require(
+                document, "comparator.absolute_float_tolerance", path
+            ),
+        ),
+        startup=StartupConfig(
+            self_test_timeout_seconds=_require(
+                document, "startup.self_test_timeout_seconds", path
+            ),
         ),
         determinism=DeterminismConfig(
             seed=_require(document, "determinism.seed", path),
@@ -108,6 +159,17 @@ def load_reward_config(path: Path) -> RewardConfig:
             for entry in entries
         ),
         shadow_log=tuple(_require(document, "shadow_log", path)),
+        shapes=RewardShapes(
+            pass_rate_threshold=_require(document, "shapes.pass_rate_threshold", path),
+            code_r1_no_code=_require(document, "shapes.code_r1.no_code", path),
+            code_r1_wrong=_require(document, "shapes.code_r1.wrong", path),
+            code_r1_correct=_require(document, "shapes.code_r1.correct", path),
+            ladder_parses=_require(document, "shapes.ladder.parses", path),
+            ladder_runs=_require(document, "shapes.ladder.runs", path),
+            ladder_pass_weight=_require(document, "shapes.ladder.pass_weight", path),
+            parse_term=_require(document, "shapes.extractability.parse_term", path),
+            fence_terms=dict(_require(document, "shapes.extractability.fence", path)),
+        ),
     )
 
 

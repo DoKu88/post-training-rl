@@ -20,7 +20,7 @@ from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 
 from post_training_rl.comparator import outputs_match
-from post_training_rl.config import VerifierConfig
+from post_training_rl.config import ComparatorConfig, VerifierConfig
 from post_training_rl.extraction import extract_python
 from post_training_rl.sandbox import Sandbox
 from post_training_rl.types import (
@@ -131,22 +131,28 @@ class Verifier:
             result = self._sandbox.run(
                 source, test.input_text, self._config.sandbox.timeout_seconds
             )
-            results.append(_classify(index, test, result))
+            results.append(
+                _classify(index, test, result, self._config.comparator)
+            )
         return tuple(results)
 
 
-def _classify(index: int, test: TestCase, result: SandboxResult) -> TestResult:
+def _classify(
+    index: int, test: TestCase, result: SandboxResult, comparator: ComparatorConfig
+) -> TestResult:
     return TestResult(
         test_index=index,
         pool=test.pool,
-        outcome=_outcome(test, result),
+        outcome=_outcome(test, result, comparator),
         duration_seconds=result.duration_seconds,
         stdout_was_truncated=result.stdout_was_truncated,
         stderr_excerpt=result.stderr,
     )
 
 
-def _outcome(test: TestCase, result: SandboxResult) -> TestOutcome:
+def _outcome(
+    test: TestCase, result: SandboxResult, comparator: ComparatorConfig
+) -> TestOutcome:
     # Timeout is checked before exit status because a timed-out child also has no exit code,
     # and "hung" must not collapse into "crashed".
     if result.timed_out:
@@ -156,7 +162,9 @@ def _outcome(test: TestCase, result: SandboxResult) -> TestOutcome:
     # Truncated output is compared rather than auto-failed. Because the comparator requires
     # matching token counts truncation almost always fails anyway — but through the normal
     # path, with no special case (ADR-0009).
-    if outputs_match(result.stdout, test.expected_output):
+    if outputs_match(
+        result.stdout, test.expected_output, comparator.absolute_float_tolerance
+    ):
         return TestOutcome.PASSED
     return TestOutcome.WRONG_OUTPUT
 

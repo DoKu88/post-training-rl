@@ -19,15 +19,6 @@ from post_training_rl.sandbox.hostile_programs import (
 )
 from post_training_rl.types import SandboxResult
 
-# Short on purpose: the self-test proves containment, not throughput, and the infinite loop
-# has to run the clock out. Using the production timeout would make startup wait ten seconds
-# for an answer two seconds gives.
-#
-# This is a behaviour-governing literal outside config/verifier.yaml, which the sprint's
-# definition of done otherwise forbids. It is here because task 8 fixes the signature as
-# `verify_sandbox_or_raise(sandbox)` with nowhere to pass config; reconciling the two needs
-# a spec amendment rather than a code change.
-_SELF_TEST_TIMEOUT_SECONDS = 2.0
 
 
 @dataclass(frozen=True)
@@ -62,14 +53,19 @@ _CHECKS = (
 )
 
 
-def verify_sandbox_or_raise(sandbox: Sandbox) -> None:
+def verify_sandbox_or_raise(sandbox: Sandbox, timeout_seconds: float) -> None:
     """Run each known-hostile program through `sandbox` and raise if one is not contained.
+
+    `timeout_seconds` comes from `startup.self_test_timeout_seconds` in config. It is kept
+    short on purpose: the self-test proves containment, not throughput, and the infinite
+    loop has to run the clock out. It is passed as a value rather than a config object
+    because that is the only field this function would read.
 
     Raises `RuntimeError` naming the check that failed, so the message says which
     containment property is missing rather than that something went wrong.
     """
     for check in _CHECKS:
-        result = sandbox.run(check.source, "", _SELF_TEST_TIMEOUT_SECONDS)
+        result = sandbox.run(check.source, "", timeout_seconds)
         if not check.is_contained(result):
             raise RuntimeError(
                 f"sandbox self-test failed: the {check.name!r} program was not contained "

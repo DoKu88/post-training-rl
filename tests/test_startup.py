@@ -4,11 +4,17 @@ It exists because a misconfigured sandbox is otherwise indistinguishable from th
 producing wrong answers — the expensive kind of bug, discovered hours into a run.
 """
 
+from pathlib import Path
+
 import pytest
 
+from post_training_rl.config import load_verifier_config
 from post_training_rl.sandbox.fake import FakeSandbox
 from post_training_rl.startup import verify_sandbox_or_raise
 from post_training_rl.types import SandboxResult
+
+_CONFIG_PATH = Path(__file__).resolve().parents[1] / "config" / "verifier.yaml"
+SELF_TEST_TIMEOUT = load_verifier_config(_CONFIG_PATH).startup.self_test_timeout_seconds
 
 
 def _result(
@@ -53,7 +59,7 @@ def _escaped() -> SandboxResult:
 def test_self_test_passes_when_all_programs_contained():
     sandbox = FakeSandbox(_CONTAINED)
 
-    verify_sandbox_or_raise(sandbox)  # returns, and does not raise
+    verify_sandbox_or_raise(sandbox, SELF_TEST_TIMEOUT)  # returns, and does not raise
 
     assert len(sandbox.calls) == 4
 
@@ -66,6 +72,6 @@ def test_self_test_raises_naming_the_uncontained_program():
     sandbox = FakeSandbox(scripted)
 
     with pytest.raises(RuntimeError) as raised:
-        verify_sandbox_or_raise(sandbox)
+        verify_sandbox_or_raise(sandbox, SELF_TEST_TIMEOUT)
 
     assert "fork bomb" in str(raised.value)

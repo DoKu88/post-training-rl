@@ -2,19 +2,17 @@
 
 Every reward is a pure function of one `RolloutOutcome`, so every test here builds a literal
 and asserts a number. No sandbox, no subprocess, no model.
+
+The registry is built from `config/reward.yaml`, so these tests assert the shipped
+configuration, not a second copy of the numbers living in the test file.
 """
+
+from pathlib import Path
 
 import pytest
 
-from post_training_rl.rewards import (
-    REWARD_FUNCTIONS,
-    binary_reward,
-    binary_threshold_reward,
-    code_r1_reward,
-    extractability_reward,
-    ladder_reward,
-    pass_rate_reward,
-)
+from post_training_rl.config import load_reward_config
+from post_training_rl.rewards import build_reward_functions
 from post_training_rl.types import (
     Extraction,
     Fence,
@@ -24,6 +22,16 @@ from post_training_rl.types import (
     TestResult,
     VerificationReport,
 )
+
+_CONFIG_PATH = Path(__file__).resolve().parents[1] / "config" / "reward.yaml"
+REWARD_FUNCTIONS = build_reward_functions(load_reward_config(_CONFIG_PATH).shapes)
+
+binary_reward = REWARD_FUNCTIONS["binary"]
+pass_rate_reward = REWARD_FUNCTIONS["pass_rate"]
+binary_threshold_reward = REWARD_FUNCTIONS["binary_threshold"]
+ladder_reward = REWARD_FUNCTIONS["ladder"]
+code_r1_reward = REWARD_FUNCTIONS["code_r1"]
+extractability_reward = REWARD_FUNCTIONS["extractability"]
 
 
 def _result(outcome: TestOutcome, index: int = 0) -> TestResult:

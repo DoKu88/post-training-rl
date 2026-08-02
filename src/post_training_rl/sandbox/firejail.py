@@ -60,16 +60,6 @@ _PYTHON_INTERPRETER = "python3"
 # the training process's PYTHONPATH, credentials, or caches.
 _CHILD_PATH = "/usr/bin:/bin"
 
-# How long timeout(1) waits after SIGTERM before sending SIGKILL. Firejail needs a moment to
-# tear its namespaces down; killing it faster is how orphaned processes appear.
-_KILL_AFTER_SECONDS = 1.0
-
-# How far above timeout(1)'s own deadline our backstop sits. timeout(1) wins normally.
-_BACKSTOP_SLACK_SECONDS = 5.0
-
-# How long to wait for an exited child to be reaped before killing its group outright.
-_REAP_TIMEOUT_SECONDS = 5.0
-
 _READ_CHUNK_BYTES = 65536
 
 # What GNU timeout(1) returns when the command exceeded its limit and SIGTERM was enough.
@@ -112,7 +102,11 @@ class FirejailSandbox:
             return self._execute(workspace, timeout_seconds)
 
     def _execute(self, workspace: Path, timeout_seconds: float) -> SandboxResult:
-        deadline_seconds = timeout_seconds + _KILL_AFTER_SECONDS + _BACKSTOP_SLACK_SECONDS
+        deadline_seconds = (
+            timeout_seconds
+            + self._config.kill_after_seconds
+            + self._config.backstop_slack_seconds
+        )
         stderr_path = workspace / _STDERR_FILENAME
 
         started_at = time.monotonic()
@@ -229,7 +223,7 @@ class FirejailSandbox:
         if process.stdout is not None:
             process.stdout.close()
         try:
-            process.wait(timeout=_REAP_TIMEOUT_SECONDS)
+            process.wait(timeout=self._config.reap_timeout_seconds)
         except subprocess.TimeoutExpired:
             # The child closed stdout but the tree has not exited — the wedge case the
             # backstop exists for. An unbounded wait() here would hang the training run.
@@ -246,7 +240,7 @@ class FirejailSandbox:
         config = self._config
         return [
             TIMEOUT_BINARY,
-            f"--kill-after={_KILL_AFTER_SECONDS}",
+            f"--kill-after={self._config.kill_after_seconds}",
             str(timeout_seconds),
             self._binary,
             "--quiet",

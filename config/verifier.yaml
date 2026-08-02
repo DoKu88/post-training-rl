@@ -26,6 +26,35 @@ sandbox:
   stderr_excerpt_bytes: 2048
   worker_threads: 12
 
+  # The three timers of ADR-0014, outermost first. timeout(1) enforces timeout_seconds
+  # above; these govern what happens when a program ignores it.
+  #
+  #   timeout_seconds ──SIGTERM──> +kill_after ──SIGKILL──> +backstop_slack ──killpg──>
+  #
+  # kill_after: firejail needs a moment to tear its namespaces down. Killing it faster is
+  # how orphaned processes appear.
+  kill_after_seconds: 1.0
+  # backstop_slack: how far above timeout(1)'s deadline our own killpg sits. timeout(1)
+  # wins normally; this only fires if it wedges.
+  backstop_slack_seconds: 5.0
+  # reap_timeout: how long to wait for an exited child to be collected before killing its
+  # group outright. Reachable by a child that closes stdout and hangs.
+  reap_timeout_seconds: 5.0
+
+comparator:
+  # Absolute, not relative — a difference of 1e-5 is accepted however large the operands
+  # are. Inherited from DeepMind's reference evaluator and preserved deliberately
+  # (ADR-0007). Two sharp edges ride on it: it is lax at small magnitudes, and values beyond
+  # 32-bit integer range reach the float path and lose precision, so two distinct very large
+  # integers compare equal. Changing this changes what counts as a correct answer.
+  absolute_float_tolerance: 1.0e-5
+
+startup:
+  # The self-test proves containment, not throughput, and the infinite loop has to run the
+  # clock out. Using the production timeout would make startup wait ten seconds for an
+  # answer two seconds gives.
+  self_test_timeout_seconds: 2.0
+
 determinism:
   # Prepended to every solution as a seeding preamble, and paired with PYTHONHASHSEED in the
   # child environment. Without it, two identical rollouts in one group can score differently

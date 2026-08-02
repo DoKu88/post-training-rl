@@ -12,120 +12,117 @@ Three conventions are decided here, once, so no individual function re-decides t
   statement, so partial credit over them is directly hackable — DeepCoder's stated failure
   mode is a model that learns to print the answers of public tests (ADR-0013).
 - A rollout with recovered code but no graded results is an **apparatus failure** and
-  raises. The dataset builder guarantees at least five graded tests per problem
-  (ADR-0009), so that state cannot arise from a model's behaviour. A rollout with no
-  recovered code legitimately has no results, and is scored on its own rung.
+  raises. The dataset builder drops problems under `tests.min_tests_required` (ADR-0009), so
+  that state cannot arise from a model's behaviour. A rollout with no recovered code
+  legitimately has no results, and is scored on its own rung.
 
-The numeric constants below are the *identity* of each function, not tunables: they come
-from the published implementations each entry reproduces, and changing one makes a different
-reward rather than a differently-configured one. `config/reward.yaml` selects which entries
-run and at what weight.
+The numbers defining each shape come from `config/reward.yaml`, not from literals here, so
+that two runs which graded differently can be diffed as files. `build_reward_functions`
+closes over them — the mechanism `verifier-scorer.md` §7 already sanctions for a
+parameterised entry, and it keeps every registry entry a plain one-argument function.
+
+**Treat a change to a shape value as defining a new reward, not tuning an existing one.**
+Each reproduces a published implementation, and a run using different values is not
+comparable to one that did not.
 """
 
 from collections.abc import Callable, Sequence
 
+from post_training_rl.config import RewardShapes
 from post_training_rl.types import Fence, RolloutOutcome, TestOutcome, TestResult
 
 RewardFn = Callable[[RolloutOutcome], float]
 
-# open-r1 `binary_code_reward`. A float-comparison guard, not a real tolerance.
-_PASS_RATE_THRESHOLD = 0.99
 
-# code-r1 `coder1/__init__.py`, which trains on CodeContests, Python, stdin/stdout.
-_CODE_R1_NO_CODE = -1.1
-_CODE_R1_WRONG = 0.1
-_CODE_R1_CORRECT = 1.1
+def build_reward_functions(shapes: RewardShapes) -> dict[str, RewardFn]:
+    """Build the registry, with each entry closing over the configured shape values.
 
-# This project's own construction, shaped like DHRCL's hierarchy. Ships unannealed.
-_LADDER_PARSES = 0.05
-_LADDER_RUNS = 0.10
-_LADDER_PASS_WEIGHT = 0.90
-
-# ADR-0012. The parse swing (1.2) deliberately exceeds the fence swing (0.8), so the worst
-# parsing rollout still outranks the best non-parsing one — a well-fenced broken program
-# must never beat a bare working one.
-_PARSE_TERM = 0.6
-_FENCE_TERMS = {
-    Fence.TAGGED: 0.4,
-    Fence.UNTAGGED: 0.2,
-    Fence.OTHER_TAG: 0.0,
-    Fence.NONE: -0.4,
-}
-
-
-def binary_reward(outcome: RolloutOutcome) -> float:
-    """1.0 when every graded test passed, else 0.0.
-
-    DeepCoder/rLLM `check_correctness` -> `all(passed)`; DeepSeek-R1's rule-based rewards
-    (arXiv:2501.12948). The default, and the baseline every other entry is compared against.
+    Returns exactly the six entries implemented for the first run. `hierarchical`, `verpo`
+    and `overlong` are in ADR-0011's design space but are not built — each needs machinery
+    no other entry needs, and none is in the first run.
     """
-    results = _graded_results(outcome)
-    if not results:
-        return 0.0
-    return 1.0 if all(_passed(result) for result in results) else 0.0
+    fence_terms = _fence_terms(shapes)
+
+    def binary(outcome: RolloutOutcome) -> float:
+        """1.0 when every graded test passed, else 0.0.
+
+        DeepCoder/rLLM `check_correctness` -> `all(passed)`; DeepSeek-R1's rule-based
+        rewards (arXiv:2501.12948). The default, and the baseline every other entry is
+        compared against.
+        """
+        results = _graded_results(outcome)
+        if not results:
+            return 0.0
+        return 1.0 if all(_passed(result) for result in results) else 0.0
+
+    def pass_rate(outcome: RolloutOutcome) -> float:
+        """The fraction of graded tests that passed. open-r1 `code_reward`."""
+        return _pass_rate(_graded_results(outcome))
+
+    def binary_threshold(outcome: RolloutOutcome) -> float:
+        """1.0 when the pass rate exceeds the threshold. open-r1 `binary_code_reward`."""
+        rate = _pass_rate(_graded_results(outcome))
+        return 1.0 if rate > shapes.pass_rate_threshold else 0.0
+
+    def ladder(outcome: RolloutOutcome) -> float:
+        """Graded rungs: no code, code that parses, code that runs, then pass rate.
+
+        This project's own construction, shaped like DHRCL's hierarchical decomposition
+        (arXiv:2607.26457). Ships unannealed — an annealed variant needs no extra machinery,
+        since the trainer passes `trainer_state` and its `global_step` to every reward
+        function, but it is not part of the first run.
+        """
+        results = _graded_results(outcome)
+        if not _has_code(outcome) or not outcome.report.extraction.parsed:
+            return 0.0
+        if not any(_ran(result) for result in results):
+            return shapes.ladder_parses
+        return shapes.ladder_runs + shapes.ladder_pass_weight * _pass_rate(results)
+
+    def code_r1(outcome: RolloutOutcome) -> float:
+        """No code scores below a wrong answer, which scores below a correct one.
+
+        code-r1 `coder1/__init__.py`. The only surveyed design where failing to produce code
+        is distinguishable from producing wrong code.
+        """
+        if not _has_code(outcome):
+            return shapes.code_r1_no_code
+        results = _graded_results(outcome)
+        if results and all(_passed(result) for result in results):
+            return shapes.code_r1_correct
+        return shapes.code_r1_wrong
+
+    def extractability(outcome: RolloutOutcome) -> float:
+        """A parse term plus a fence term, so both dimensions are rewarded independently.
+
+        ADR-0012. Carries weight 0.1 against the primary reward and exists to give an
+        otherwise-degenerate group some variance: when every rollout fails every test the
+        primary is identical across the group, the standard deviation is zero, and the
+        prompt yields no gradient at all having cost a full group of rollouts.
+        """
+        extraction = outcome.report.extraction
+        parse_term = shapes.parse_term if extraction.parsed else -shapes.parse_term
+        return parse_term + fence_terms[extraction.fence]
+
+    return {
+        "binary": binary,
+        "pass_rate": pass_rate,
+        "binary_threshold": binary_threshold,
+        "ladder": ladder,
+        "code_r1": code_r1,
+        "extractability": extractability,
+    }
 
 
-def pass_rate_reward(outcome: RolloutOutcome) -> float:
-    """The fraction of graded tests that passed. open-r1 `code_reward`."""
-    return _pass_rate(_graded_results(outcome))
-
-
-def binary_threshold_reward(outcome: RolloutOutcome) -> float:
-    """1.0 when the pass rate exceeds 0.99, else 0.0. open-r1 `binary_code_reward`."""
-    return 1.0 if _pass_rate(_graded_results(outcome)) > _PASS_RATE_THRESHOLD else 0.0
-
-
-def ladder_reward(outcome: RolloutOutcome) -> float:
-    """Graded rungs: no code, code that parses, code that runs, then pass rate.
-
-    This project's own construction, shaped like DHRCL's hierarchical decomposition
-    (arXiv:2607.26457). Ships unannealed — an annealed variant needs no extra machinery,
-    since the trainer passes `trainer_state` and its `global_step` to every reward function,
-    but it is not part of the first run.
-    """
-    results = _graded_results(outcome)
-    if not _has_code(outcome) or not outcome.report.extraction.parsed:
-        return 0.0
-    if not any(_ran(result) for result in results):
-        return _LADDER_PARSES
-    return _LADDER_RUNS + _LADDER_PASS_WEIGHT * _pass_rate(results)
-
-
-def code_r1_reward(outcome: RolloutOutcome) -> float:
-    """-1.1 for no code, +0.1 for a wrong answer, +1.1 when every test passes.
-
-    code-r1 `coder1/__init__.py`. The only surveyed design where failing to produce code is
-    distinguishable from producing wrong code.
-    """
-    if not _has_code(outcome):
-        return _CODE_R1_NO_CODE
-    results = _graded_results(outcome)
-    if results and all(_passed(result) for result in results):
-        return _CODE_R1_CORRECT
-    return _CODE_R1_WRONG
-
-
-def extractability_reward(outcome: RolloutOutcome) -> float:
-    """A parse term plus a fence term, so both dimensions are rewarded independently.
-
-    ADR-0012, values from rl-reward-functions.md §3. Carries weight 0.1 against the primary
-    reward and exists to give an otherwise-degenerate group some variance: when every
-    rollout fails every test, the primary is identical across the group, the standard
-    deviation is zero, and the prompt yields no gradient at all having cost a full group.
-    """
-    extraction = outcome.report.extraction
-    parse_term = _PARSE_TERM if extraction.parsed else -_PARSE_TERM
-    return parse_term + _FENCE_TERMS[extraction.fence]
-
-
-REWARD_FUNCTIONS: dict[str, RewardFn] = {
-    "binary": binary_reward,
-    "pass_rate": pass_rate_reward,
-    "binary_threshold": binary_threshold_reward,
-    "ladder": ladder_reward,
-    "code_r1": code_r1_reward,
-    "extractability": extractability_reward,
-}
+def _fence_terms(shapes: RewardShapes) -> dict[Fence, float]:
+    """Resolve the config's string keys to `Fence` members, naming any that do not map."""
+    try:
+        return {Fence(name): value for name, value in shapes.fence_terms.items()}
+    except ValueError as unknown:
+        raise ValueError(
+            f"shapes.extractability.fence in config/reward.yaml names a fence that does "
+            f"not exist: {unknown}. Valid names: {sorted(f.value for f in Fence)}"
+        ) from unknown
 
 
 def _graded_results(outcome: RolloutOutcome) -> Sequence[TestResult]:
