@@ -1,0 +1,27 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "post-training-rl"
+version = "0.1.0"
+description = "RLVR for competitive programming: GRPO on CodeContests, rewarded by execution"
+requires-python = ">=3.11"
+dependencies = ["pyyaml"]
+
+[project.optional-dependencies]
+dev = ["pytest", "pytest-timeout"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+# Both suites that cost more than a millisecond are excluded by default, so the command run
+# on every red-green cycle stays sub-second and spawns nothing. Run them explicitly:
+#   pytest -q -m subprocess_backend
+#   pytest -q -m containment
+markers = [
+    "subprocess_backend: spawns real subprocesses",
+    "containment: requires firejail",
+]
+addopts = '-m "not containment and not subprocess_backend"'

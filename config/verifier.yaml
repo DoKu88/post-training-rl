@@ -1,0 +1,48 @@
+# Every value that governs verifier or sandbox behaviour. No literal in code decides any of
+# these — two runs that differ must be diffable as files.
+
+sandbox:
+  # firejail | subprocess. No default, and never inferred: if this says firejail and the
+  # binary is absent, startup raises naming it rather than silently downgrading to the
+  # weaker backend (ADR-0005).
+  backend: firejail
+
+  # Flat, and deliberately not the dataset's own `time_limit`. Those limits are 1-6s and
+  # were calibrated for C++ contest submissions; Python is roughly an order of magnitude
+  # slower, so enforcing them would fail correct Python solutions in bulk. DeepMind's own
+  # released evaluator makes the same choice (ADR-0006).
+  timeout_seconds: 10.0
+
+  memory_limit_gib: 4
+  max_processes: 32
+  max_open_files: 32
+  max_file_size_mib: 2
+
+  # Enforced by the reader in the parent process, not by an rlimit. Pipe capacity is 64 KiB
+  # and --rlimit-fsize does not apply to pipes, so an unbounded reader is how a runaway
+  # print loop exhausts memory in the training process itself (ADR-0009).
+  stdout_cap_bytes: 10485760
+
+  stderr_excerpt_bytes: 2048
+  worker_threads: 12
+
+determinism:
+  # Prepended to every solution as a seeding preamble, and paired with PYTHONHASHSEED in the
+  # child environment. Without it, two identical rollouts in one group can score differently
+  # and GRPO reads that difference as advantage — gradient for variance the model did not
+  # cause. null disables preamble injection (ADR-0008).
+  seed: 0
+
+tests:
+  # Caps per-rollout execution cost; CodeContests problems can carry hundreds of generated
+  # tests. The floor follows DeepCoder's finding that problems with fewer tests encourage
+  # the model to print memorised answers (ADR-0009).
+  max_tests_per_rollout: 15
+  min_tests_required: 5
+
+extraction:
+  # "" = no prefill, which is the default (ADR-0012). If ever set, this value has two
+  # consumers — the dataset builder that renders the prompt and the reward path that
+  # re-prepends before extraction — and they must be fed from this one key. Forgetting the
+  # second is documented as the single most likely way to silently score zero on everything.
+  prefill: ""

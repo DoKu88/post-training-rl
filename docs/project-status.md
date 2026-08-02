@@ -1,6 +1,6 @@
 # Project status
 
-**Last updated:** 2026-08-02 · **Phase:** design complete, implementation not started
+**Last updated:** 2026-08-02 · **Phase:** sprint 1 in progress — task 1 of 8 complete
 
 A running record of what exists, what is decided, and what happens next. Update it whenever a
 sprint task completes, a decision is made, or an unknown gets measured.
@@ -9,8 +9,9 @@ sprint task completes, a decision is made, or an unknown gets measured.
 
 ## One-line summary
 
-Every design decision is made and written down. **No code exists yet.** The next action is
-`/write-code docs/plans/sprint-01.md, task 1`.
+Every design decision is made and written down. **Sprint 1 has started** — the scaffold,
+types, and config loading are in. The next action is
+`/write-code docs/plans/sprint-01.md, task 2`.
 
 ---
 
@@ -23,8 +24,8 @@ Every design decision is made and written down. **No code exists yet.** The next
 | Vocabulary | ✅ `CONTEXT.md` |
 | Design | ✅ 5 documents — loop, modules, behaviour, rewards, model |
 | Plan | ✅ Roadmap + sprint 1 fully specified |
-| **Code** | ❌ **Zero Python files** |
-| Environment | ⚠️ Exists as conda env `post-train`, one known defect |
+| **Code** | 🚧 **Sprint 1, task 1 of 8** — scaffold, types, config loading |
+| Environment | ⚠️ Conda env `post-train`, one known defect · firejail 0.9.74 installed |
 
 ---
 
@@ -81,14 +82,14 @@ Both include a blunt "risks and unknowns" section listing what could **not** be 
 ```bash
 conda activate post-train
 # then, one task per invocation, reviewed between each:
-/write-code docs/plans/sprint-01.md, task 1
+/write-code docs/plans/sprint-01.md, task 2
 ```
 
 ### Sprint 1 task board
 
 | # | Task | Tests | Status |
 | --- | --- | --- | --- |
-| 1 | Scaffold, types, config loading | 0 (deliberate) | ☐ |
+| 1 | Scaffold, types, config loading | 0 (deliberate) | ✅ |
 | 2 | Comparator | 12 unit | ☐ |
 | 3 | Extraction cascade | 16 unit | ☐ **review after** |
 | 4 | Sandbox seam + fake + subprocess | 4 integration | ☐ |

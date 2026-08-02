@@ -1,0 +1,27 @@
+# Which reward functions run, and at what weight. The shapes themselves live in the registry
+# in code — each carries the published source it came from; changing one of those constants
+# would make it a different function rather than tune this one (ADR-0011).
+#
+# Nothing in sprint 1 reads this file. The TRL adapter that consumes it arrives in sprint 3.
+
+# Exactly one primary drives training. Weights are not a probability distribution and need
+# not sum to 1: GRPO normalises advantage by the group's standard deviation, which is
+# affine-invariant, so only the *ratio* between terms carries information. [1.0, 0.1] and
+# [10.0, 1.0] train identically. The design statement is that formatting can move total
+# reward by at most one fifth of what correctness can.
+functions:
+  - name: binary
+    weight: 1.0
+  # Auxiliary. Exists to give an otherwise-degenerate group some variance: when every
+  # rollout fails every test, binary is 0.0 for all of them, the standard deviation is 0,
+  # and the prompt yields no gradient at all having cost a full group of rollouts.
+  - name: extractability
+    weight: 0.1
+
+# Computed at weight 0.0 and emitted as metrics, so one run yields the counterfactual reward
+# curve for every registered shape without a second execution pass (ADR-0004, ADR-0011).
+shadow_log:
+  - pass_rate
+  - binary_threshold
+  - ladder
+  - code_r1
