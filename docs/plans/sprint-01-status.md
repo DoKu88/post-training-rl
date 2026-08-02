@@ -4,7 +4,7 @@ Implementation record for [`sprint-01.md`](sprint-01.md). Covers what was built,
 objectives were met, what was tested, what deviates from the plan, and what is carried
 forward.
 
-**Sprint 1 is complete. All four gates pass.** Branch `worktree-sprint-01`, 10 commits (README + 8 tasks + gate review).
+**Sprint 1 is complete. All four gates pass.** Branch `worktree-sprint-01`, 13 commits.
 
 ---
 
@@ -14,7 +14,7 @@ forward.
 | --- | --- | --- |
 | Unit suite green, no subprocess, sub-second | **63** | ✅ **63 passed in 0.03 s** |
 | `-m subprocess_backend` green | 4 | ✅ **4 passed in 1.05 s** |
-| `-m containment` green with firejail | 9 | ✅ **9 passed in 2.33 s** |
+| `-m containment` green with firejail | 9 | ✅ **9 passed in 2.62 s** |
 | A rollout scored end to end by all six rewards, no model loaded | — | ✅ §4 below |
 | Every behaviour-governing constant in config | — | ✅ see §6.1 |
 | Nothing imports `trl`, `transformers`, `peft`, `datasets` | — | ✅ stdlib + `pyyaml` + `pytest` only |
@@ -38,8 +38,10 @@ No test was written that the sprint does not name, and none it names is missing.
 ## 2. What was built
 
 ```
-config/verifier.yaml           sandbox limits, seed, test caps, prefill
-config/reward.yaml             which rewards run, at what weight
+config/verifier.yaml           sandbox limits + flags + 3 timers, comparator tolerance,
+                               startup timeout, determinism seed, test caps, prefill
+config/reward.yaml             which rewards run and at what weight, plus `shapes:` —
+                               every number that defines a reward function
 requirements.txt               pyyaml, pytest, pytest-timeout
 src/post_training_rl/
   types.py                     10 frozen types crossing every seam
@@ -54,7 +56,7 @@ src/post_training_rl/
     firejail.py                training adapter
     subprocess_.py             weaker CI/dev adapter
     fake.py                    scripted results + call log
-    hostile_programs.py        five hostile programs, two call sites
+    hostile_programs.py        five hostile programs + the success marker, two call sites
 ```
 
 Task-by-task, each committed separately and reviewed before commit:
@@ -70,6 +72,9 @@ Task-by-task, each committed separately and reviewed before commit:
 | 7 | Reward registry | `2a5e026` |
 | 8 | Startup self-test | `29f1c77` |
 | — | Gate review fixes | `b49b756` |
+| — | Status report | `62f2c02` |
+| — | All tunables to YAML; public-test decision | `64bbb5a` |
+| — | Truncation fix, timeout 2.0 s, audit fixes | `cb7ea9b` |
 
 ---
 
@@ -103,6 +108,11 @@ optimizer step — roughly three hours across a 500-step run.
 wrapping the firejail invocation. Result: **0.029 s per execution, 71× faster.** The
 containment suite dropped from 17.4 s to 2.3 s. Twenty consecutive executions and five killed
 infinite loops leaked zero firejail and zero python3 processes.
+
+### 3.2 Startup self-test cost
+
+3.13 s against the real `FirejailSandbox`, against the "about four seconds" budgeted in
+`verifier-scorer.md` §3.
 
 ### 3.3 How long correct Python actually takes — and where the timeout should sit
 
@@ -160,11 +170,6 @@ lives only in `diag/public_pass_rate` (ADR-0013). Making the policy *learn* the 
 would need a new registry entry reading `public_results`, which ADR-0013 deliberately
 forbids because public tests are printed in the statement and therefore hackable. That is a
 decision for sprint 4, not a gap in sprint 1.
-
-### 3.2 Startup self-test cost
-
-3.13 s against the real `FirejailSandbox`, against the "about four seconds" budgeted in
-`verifier-scorer.md` §3.
 
 ---
 
@@ -380,12 +385,37 @@ the suite is back at the specified 1.0 s.
 
 ## 7. Open items and nits
 
-### 7.1 The self-test refuses the documented CI backend
+### 7.1 `backend: subprocess` — two separate things, neither blocking today
 
-`SubprocessSandbox` fails the network check, because it cannot block network access. That is
-correct per `behavior.md` §4.13 — the weaker adapter is explicitly not held to guarantees
-5–8 — but it means `backend: subprocess` cannot start a run at all. This may be intended
-(training uncontained is a bad idea) or may block CI. **Needs a decision before sprint 3.**
+**(a) Nothing reads `sandbox.backend`.** The key is parsed into `SandboxConfig` and never
+consulted; there is no factory mapping `"firejail"` → `FirejailSandbox`. Today the adapter is
+whichever class the caller constructs, so setting `backend: subprocess` does nothing. Missing
+wiring, not a defect — the composition root is sprint 3 — but it means ADR-0005's
+"never silently downgrade" guard is currently enforced by `FirejailSandbox.__init__` alone.
+
+**(b) The self-test contradicts `behavior.md` §4.13 on exactly one check.** Measured:
+
+| Check | firejail | subprocess |
+| --- | --- | --- |
+| infinite loop | PASS | PASS |
+| fork bomb | PASS | PASS — `preexec_fn` rlimits do work |
+| **network connection** | PASS | **FAIL** (`exit=0`, the connect succeeded) |
+| output flood | PASS | PASS |
+
+Three of four pass. The one that fails is the one §4.13 already exempts: *"the subprocess
+adapter provides the functional behaviour and resource limits, but **not** network
+isolation … it is **not held to guarantees 5–8**."* Meanwhile §9.3 says startup aborts if the
+configured sandbox fails to contain any hostile program, unconditionally. §9.3 aborts on
+precisely what §4.13 exempts.
+
+Nothing breaks today: the `subprocess_backend` suite never calls the self-test, and the
+`containment` suite needs firejail anyway. It bites once sprint 3 wires a factory.
+
+**The decision:** do you ever want to run the loop without firejail? If no — leave it,
+firejail becomes mandatory and `backend` is decorative. If yes — make the self-test assert
+only the guarantees the configured backend claims, with a loud warning that network isolation
+is absent and the configuration must not be used for training (~15 lines). Either way the
+`backend` → adapter factory should be wired in sprint 3 so the key means something.
 
 ### 7.2 `ladder`'s timeout rung is unspecified
 
