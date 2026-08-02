@@ -23,4 +23,8 @@ markers = [
     "subprocess_backend: spawns real subprocesses",
     "containment: requires firejail",
 ]
+# Every test here is a plain function. Without this, pytest tries to collect the domain
+# types whose names begin with "Test" — TestCase, TestOutcome, TestPool, TestResult — and
+# warns that it cannot. Those names come from verifier-scorer.md §2 and are not negotiable.
+python_classes = []
 addopts = '-m "not containment and not subprocess_backend"'
