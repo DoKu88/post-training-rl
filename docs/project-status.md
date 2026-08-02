@@ -9,9 +9,10 @@ sprint task completes, a decision is made, or an unknown gets measured.
 
 ## One-line summary
 
-Every design decision is made and written down. **Sprint 1 is under way** — scaffold, types, config, comparator, extraction, and both sandbox
-adapters, the verifier and the reward registry are in. The next action is
-`/write-code docs/plans/sprint-01.md, task 8`.
+Every design decision is made and written down. **Sprint 1 is complete** —
+see [`sprint-01-status.md`](plans/sprint-01-status.md). Built: — scaffold, types, config, comparator, extraction, and both sandbox
+adapters, the verifier, the reward registry and the startup self-test.
+The next action is sprint 2 — the dataset builder.
 
 ---
 
@@ -73,6 +74,8 @@ Both include a blunt "risks and unknowns" section listing what could **not** be 
 
 [`roadmap.md`](plans/roadmap.md) — four sprints, each with objective, delivers-table, and gate.
 [`sprint-01.md`](plans/sprint-01.md) — 8 tasks, 63 unit + 13 integration tests, fully specified.
+[`sprint-01-status.md`](plans/sprint-01-status.md) — **implementation report**: gates, measurements,
+the four defects review caught, deviations, and open items.
 
 ---
 
@@ -83,7 +86,7 @@ Both include a blunt "risks and unknowns" section listing what could **not** be 
 ```bash
 conda activate post-train
 # then, one task per invocation, reviewed between each:
-/write-code docs/plans/sprint-01.md, task 8
+/write-code docs/plans/sprint-02.md, task 1   # sprint 2 not yet written
 ```
 
 ### Sprint 1 task board
