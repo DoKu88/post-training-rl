@@ -384,7 +384,7 @@ Every distinction the design exists to protect is visible:
 Every task went through a two-axis review — standards and spec, run as independent agents so
 neither masks the other — before its work was committed. Reviews ran after tasks 3, 5 and 6
 and at the gate, each covering the preceding task too, matching the review checkpoints
-`sprint-01.md` itself specifies. **Four real bugs were caught that the tests did not**, and in
+`sprint-01.md` itself specifies. **Seven real bugs were caught that the tests did not**, and in
 two cases both reviewers found the same defect independently.
 
 ### 5.1 Extraction reported valid Python as unparseable — **task 3**
@@ -465,6 +465,50 @@ scripts `exit_code=None`, the state the real adapter actually produces.
 
 Reward impact was real: `_ran` excludes `RUNTIME_ERROR`, so `ladder` was dropping from the
 0.10 rung to 0.05 on every truncated rollout.
+
+### 5.7 `FakeSandbox` accepted states no real sandbox produces — the hole §5.6 fell through
+
+§5.6 fixed one bad fixture. It did not close the hole that let the fixture exist: `FakeSandbox`
+would accept **any** `SandboxResult`, including states `FirejailSandbox` can never return.
+Demonstrated after the fix was in:
+
+```
+FakeSandbox([SandboxResult(exit_code=0, timed_out=True, stdout_was_truncated=True)])
+  -> accepted, no complaint
+```
+
+That single value violates all three invariants at once. A test written against it proves
+nothing about the system that actually runs.
+
+The invariants were derived from `FirejailSandbox` and confirmed by running it across a clean
+exit, a raise, an explicit exit code, an infinite loop, and an output flood:
+
+| Observed state | `exit_code` | `timed_out` | `truncated` |
+| --- | --- | --- | --- |
+| clean exit 0 | 0 | False | False |
+| raises | 1 | False | False |
+| exits 3 | 3 | False | False |
+| infinite loop | None | **True** | False |
+| output flood | None | False | **True** |
+
+- `truncated=True` ⟹ `exit_code is None` — hitting the cap *kills* the program, so the status
+  is the sandbox's, never an exit code.
+- `truncated=True` ⟹ `timed_out is False` — the reader stops at the cap or at the deadline,
+  never both.
+- `timed_out=True` ⟹ `exit_code is None`.
+
+`FakeSandbox.__init__` now rejects any scripted result violating these, naming the index and
+the invariant. All 63 tests stayed green when it was added, which confirms every existing
+fixture was already producible — the guard is against the next one.
+
+**Second gap, same area:** `FakeSandbox` records `timeout_seconds` but never acts on it, and
+**no test asserted the value the verifier passed through.** The verifier could have passed
+0.0, or the startup self-test's timeout by mistake, and every test would have stayed green.
+Two existing tests — the two that already inspect the handoff — now assert it. Verified by
+mutation: forcing the verifier to pass `999.0` turns
+`test_determinism_preamble_is_prepended` red.
+
+No test was added; the per-file counts are unchanged at 12/16/13/20/2.
 
 ---
 

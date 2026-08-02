@@ -167,6 +167,11 @@ def test_determinism_preamble_is_prepended():
     [call] = sandbox.calls
     assert call.source.startswith(build_preamble(_CONFIG.determinism.seed).source)
     assert call.source.endswith("print(1)")
+    # This test is the only place that inspects what the verifier handed the sandbox, so the
+    # timeout is asserted here too. Nothing else covers it: FakeSandbox records
+    # timeout_seconds but never acts on it, so the verifier could pass 0.0, or the startup
+    # self-test's timeout by mistake, and every other test would still be green.
+    assert call.timeout_seconds == _CONFIG.sandbox.timeout_seconds
 
 
 def test_preamble_seeds_random_and_hash():

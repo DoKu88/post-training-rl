@@ -62,6 +62,9 @@ def test_self_test_passes_when_all_programs_contained():
     verify_sandbox_or_raise(sandbox, SELF_TEST_TIMEOUT)  # returns, and does not raise
 
     assert len(sandbox.calls) == 4
+    # The self-test must use its own short timeout, not the production one. Getting this
+    # wrong would make startup wait the full execution limit on the infinite loop.
+    assert all(call.timeout_seconds == SELF_TEST_TIMEOUT for call in sandbox.calls)
 
 
 def test_self_test_raises_naming_the_uncontained_program():
