@@ -21,7 +21,7 @@ The next action is sprint 2 — the dataset builder.
 | | Status |
 | --- | --- |
 | Research | ✅ Complete — 2,918 lines across two primary-source documents |
-| Decisions | ✅ 14 ADRs |
+| Decisions | ✅ 14 ADRs (0006 amended: timeout provisionally 2.0 s) |
 | Vocabulary | ✅ `CONTEXT.md` |
 | Design | ✅ 5 documents — loop, modules, behaviour, rewards, model |
 | Plan | ✅ Roadmap + sprint 1 fully specified |
@@ -143,6 +143,7 @@ sprint 3.**
 | Filter drop rate per rule | Whether the multi-output regex over-matches (expect ~25%) | Sprint 2 |
 | ~~Sandbox throughput~~ | **MEASURED, sprint 1:** 0.029 s/execution after ADR-0014 (was 2.03 s). A thread pool suffices | ✅ |
 | Fence and parse rates | Whether `extractability` earns its keep, and whether prefill is worth adopting | Sprint 3 |
+| Timeout rate, and the right `timeout_seconds` | Provisionally 2.0 s. Ablate 1/2/5/10 against timeout rate and pass@k | Sprint 3 |
 | Base-model pass@1 | The only reference point that exists, since ADR-0010 broke comparability | Sprint 4 |
 
 ### Unverified assumptions

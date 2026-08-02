@@ -19,9 +19,16 @@ def outputs_match(actual: str, expected: str, absolute_tolerance: float) -> bool
     and two runs that graded differently must be diffable as files.
 
     Two sharp edges ride on it, both inherited from the reference implementation and
-    preserved deliberately: it is lax at small magnitudes, and the reference parses integers
-    as 32-bit, so values beyond that range reach the float path and lose precision — two
-    distinct very large integers therefore compare equal.
+    preserved deliberately. They are separate mechanisms and behavior.md §1.8-1.9 lists
+    them together, which is easy to misread:
+
+    1. The tolerance being absolute makes it *lax at small magnitudes* — at operands near
+       1e-9 it accepts a relative difference of ten thousand fold. At large magnitudes an
+       absolute tolerance is, if anything, strict.
+    2. The *large*-magnitude danger is a different thing: the reference parses integers as
+       32-bit, so values beyond that range reach the float path, and float64 cannot
+       represent them exactly — two distinct very large integers compare equal. That is
+       precision loss, not tolerance.
     """
     actual_tokens = actual.split()
     expected_tokens = expected.split()

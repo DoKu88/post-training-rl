@@ -157,11 +157,16 @@ def _outcome(
     # and "hung" must not collapse into "crashed".
     if result.timed_out:
         return TestOutcome.TIMEOUT
-    if result.exit_code is None or result.exit_code != 0:
+    # Truncation is checked before exit status too, and for the same kind of reason. When the
+    # reader hits the cap it *kills* the program, so the exit status that comes back is the
+    # sandbox's, not the program's — treating it as a crash would auto-fail every truncated
+    # rollout. behavior.md §5.8 and ADR-0009 both require the truncated output be compared
+    # anyway: because the comparator demands matching token counts it will almost always
+    # fail, but through the normal path, with no special case.
+    if not result.stdout_was_truncated and (
+        result.exit_code is None or result.exit_code != 0
+    ):
         return TestOutcome.RUNTIME_ERROR
-    # Truncated output is compared rather than auto-failed. Because the comparator requires
-    # matching token counts truncation almost always fails anyway — but through the normal
-    # path, with no special case (ADR-0009).
     if outputs_match(
         result.stdout, test.expected_output, comparator.absolute_float_tolerance
     ):

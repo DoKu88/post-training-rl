@@ -39,7 +39,7 @@ _CHECKS = (
     # Stopped by --rlimit-nproc: fork() raises, Python exits non-zero, and it does so
     # promptly. A fork bomb that merely runs out the clock was NOT capped.
     _ContainmentCheck(
-        "fork bomb", FORK_BOMB, lambda r: not r.timed_out and r.exit_code != 0
+        "fork bomb", FORK_BOMB, lambda r: not r.timed_out and r.exit_code is not None and r.exit_code != 0
     ),
     # Stopped by --seccomp=socket: the connect raises immediately. A run that times out
     # proves nothing — the connection may simply have been blocking.

@@ -16,6 +16,7 @@ import pytest
 
 from post_training_rl.config import load_verifier_config
 from post_training_rl.sandbox import hostile_programs
+from post_training_rl.sandbox.hostile_programs import NETWORK_SUCCESS_MARKER
 from post_training_rl.sandbox.firejail import FIREJAIL_BINARY, FirejailSandbox
 
 # The sprint's stated floor. It holds again under ADR-0014: the wall-clock limit is enforced
@@ -24,7 +25,10 @@ from post_training_rl.sandbox.firejail import FIREJAIL_BINARY, FirejailSandbox
 # 3.0, because that flag polls at ~2s intervals and killed a program that had already
 # finished.
 TEST_TIMEOUT_SECONDS = 1.0
-TIMEOUT_SLACK_SECONDS = 10.0
+# Tight on purpose. With timeout_seconds=1.0, kill_after=1.0 and backstop_slack=5.0 the
+# parent-side killpg fires at 7s, so a slack of 10 would let this test pass even if
+# timeout(1) never worked and only the backstop did. 3.0 asserts the OUTER timer fired.
+TIMEOUT_SLACK_SECONDS = 3.0
 
 _CONFIG_PATH = Path(__file__).resolve().parents[1] / "config" / "verifier.yaml"
 
@@ -80,7 +84,7 @@ def test_fork_bomb_is_contained():
 @requires_firejail
 def test_network_access_is_blocked():
     result = _sandbox().run(hostile_programs.NETWORK_CONNECTION, "", TEST_TIMEOUT_SECONDS)
-    assert "connected" not in result.stdout
+    assert NETWORK_SUCCESS_MARKER not in result.stdout
 
 
 @requires_firejail

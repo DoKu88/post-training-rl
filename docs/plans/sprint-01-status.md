@@ -31,7 +31,7 @@ Per-file test counts match the plan exactly:
 | `test_sandbox_subprocess.py` | 4 | 4 |
 | `test_sandbox_firejail.py` | 9 | 9 |
 
-No test was written that the sprint does not name, and none it names is missing.
+No test was written that the sprint does not name, and none it names is missing. Verified by an independent adversarial audit of the whole sprint against `sprint-01.md`, all 14 ADRs, `behavior.md`, `verifier-scorer.md`, `rl-reward-functions.md` and `CONTEXT.md`'s `_Avoid_` lists — see §5.6 for what it found.
 
 ---
 
@@ -75,7 +75,7 @@ Task-by-task, each committed separately and reviewed before commit:
 
 ## 3. Measurements this sprint produced
 
-Both were listed as unknowns. Both are now answered.
+Three, all previously unmeasured.
 
 ### 3.1 Sandbox throughput — the risk the roadmap carried into sprint 2
 
@@ -104,6 +104,63 @@ wrapping the firejail invocation. Result: **0.029 s per execution, 71× faster.*
 containment suite dropped from 17.4 s to 2.3 s. Twenty consecutive executions and five killed
 infinite loops leaked zero firejail and zero python3 processes.
 
+### 3.3 How long correct Python actually takes — and where the timeout should sit
+
+`ADR-0006` set a flat 10 s following DeepMind's evaluator, reasoning that Python is ~10×
+slower than the C++ the 1–6 s contest limits were calibrated for. Measured on CPython 3.11
+under the real sandbox, that headroom is far larger than needed.
+
+**Algorithmically sound solutions, at realistic CodeContests input scales:**
+
+| Solution | Time |
+| --- | --- |
+| O(n) sum, n = 1,000,000 (3.9 MB stdin) | 0.07 s |
+| O(n log n) sort, n = 1,000,000 | 0.10 s |
+| Dijkstra, 2×10⁵ edges | 0.06 s |
+| Segment tree, 10⁵ queries | 0.20 s |
+| Sieve to 10⁷ | 0.05 s |
+| 2D DP, 2000×2000 | **0.57 s** ← slowest sound solution found |
+
+**Solutions with the wrong complexity:**
+
+| Solution | Time |
+| --- | --- |
+| `list.insert(0, x)` × 200,000 (hidden O(n²)) | 1.93 s |
+| Explicit O(n²), 100M ops | 2.66 s |
+| Explicit O(n²), 900M ops | 11.00 s |
+
+**Cost of a genuinely hung rollout** (graded abort + one public timeout):
+
+| `timeout_seconds` | Cost |
+| --- | --- |
+| 1.0 | 4.0 s |
+| **2.0** | **6.0 s** |
+| 5.0 | 12.0 s |
+| 10.0 | 22.0 s |
+
+`config/verifier.yaml` now sets **2.0**, and ADR-0006 carries an amendment note. It keeps
+~3.5× margin over the slowest sound solution while placing the "too slow" boundary below the
+quadratic cases, and cuts a hung rollout from 22 s to 6 s.
+
+**Deliberately provisional.** The timeout *rate* is unmeasured until a real run, so this is a
+reasonable value chosen to avoid over-optimising early, not a settled one. Sprint 3 should
+ablate 1 / 2 / 5 / 10 against measured timeout rates and pass@k — it is one config key.
+
+**The complexity signal does not depend on this value.** Because graded tests are ordered
+longest-input-first (ADR-0009) and public tests are the statement's small examples, a
+too-slow solution times out on graded and passes public, while a hang times out on both:
+
+| Rollout | graded | public | every reward |
+| --- | --- | --- | --- |
+| O(n²) too slow | `timeout` + 4 skipped | **passed** | 0.00 / 0.00 / 0.00 / 0.05 / 0.10 / 1.00 |
+| infinite loop | `timeout` + 4 skipped | **timeout** | 0.00 / 0.00 / 0.00 / 0.05 / 0.10 / 1.00 |
+
+Note the last column: **the two are indistinguishable to every reward function.** The signal
+lives only in `diag/public_pass_rate` (ADR-0013). Making the policy *learn* the difference
+would need a new registry entry reading `public_results`, which ADR-0013 deliberately
+forbids because public tests are printed in the statement and therefore hackable. That is a
+decision for sprint 4, not a gap in sprint 1.
+
 ### 3.2 Startup self-test cost
 
 3.13 s against the real `FirejailSandbox`, against the "about four seconds" budgeted in
@@ -113,19 +170,28 @@ infinite loops leaked zero firejail and zero python3 processes.
 
 ## 4. End-to-end demonstration
 
-Five rollouts against one problem (5 graded + 1 public test), real `FirejailSandbox`, no
-model loaded:
+Real `FirejailSandbox`, `timeout_seconds: 2.0`, no model loaded. Graded tests are ordered
+longest-input-first per ADR-0009, so the first graded test is the one that separates
+complexity classes.
 
-| Rollout | fence | parsed | graded | `binary` | `pass_rate` | `binary_threshold` | `ladder` | `code_r1` | `extractability` |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| correct | tagged | ✓ | 5/5 | 1.00 | 1.00 | 1.00 | 1.00 | **1.10** | 1.00 |
-| off by one | tagged | ✓ | 0/5 | 0.00 | 0.00 | 0.00 | 0.10 | 0.10 | 1.00 |
-| crashes | tagged | ✓ | 0/5 | 0.00 | 0.00 | 0.00 | 0.05 | 0.10 | 1.00 |
-| unparseable | tagged | ✗ | 0/5 | 0.00 | 0.00 | 0.00 | 0.00 | 0.10 | −0.20 |
-| prose only | none | ✗ | not executed | 0.00 | 0.00 | 0.00 | 0.00 | **−1.10** | −1.00 |
+| Rollout | graded | public | `binary` | `pass_rate` | `bin_thr` | `ladder` | `code_r1` | `extract` |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| O(1) correct | all 5 passed | passed | 1.00 | 1.00 | 1.00 | 1.00 | **1.10** | 1.00 |
+| O(n²) too slow | timeout + 4 skipped | **passed** | 0.00 | 0.00 | 0.00 | 0.05 | 0.10 | 1.00 |
+| infinite loop | timeout + 4 skipped | **timeout** | 0.00 | 0.00 | 0.00 | 0.05 | 0.10 | 1.00 |
+| prose only | not executed | — | 0.00 | 0.00 | 0.00 | 0.00 | **−1.10** | −1.00 |
 
-24 sandbox executions in 0.36 s — the prose rollout contributes none, which is the
-short-circuit working. Every distinction the design exists to protect is visible:
+An earlier run at 10 s with a smaller problem also exercised the extraction axis:
+
+| Rollout | fence | parsed | graded | `binary` | `ladder` | `code_r1` | `extract` |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| correct | tagged | ✓ | 5/5 | 1.00 | 1.00 | 1.10 | 1.00 |
+| off by one | tagged | ✓ | 0/5 | 0.00 | 0.10 | 0.10 | 1.00 |
+| crashes | tagged | ✓ | 0/5 | 0.00 | 0.05 | 0.10 | 1.00 |
+| unparseable | tagged | ✗ | 0/5 | 0.00 | 0.00 | 0.10 | −0.20 |
+| prose only | none | ✗ | not executed | 0.00 | 0.00 | −1.10 | −1.00 |
+
+Every distinction the design exists to protect is visible:
 
 - `binary` collapses everything below all-pass to 0.0 — its known sparsity, and why it ships
   composed with `extractability`.
@@ -134,10 +200,13 @@ short-circuit working. Every distinction the design exists to protect is visible
 - `code_r1` separates prose (−1.10) from unparseable code (+0.10) — a 1.2 swing, and the
   reason for the fix in §5.2.
 - `extractability`'s parse swing exceeds its fence swing: every parsing row scores above
-  every non-parsing row, which is the invariant ADR-0012 requires.
-- Rows 2–5 all have `binary = 0.0`. With `extractability` at weight 0.1 the totals differ
-  (0.10, 0.10, −0.02, −0.10), so the group has non-zero variance and produces a gradient
-  instead of being degenerate — `rl-reward-functions.md` §4's worked example, reproduced.
+  every non-parsing row, the invariant ADR-0012 requires.
+- In the second table rows 2–5 all have `binary = 0.0`. With `extractability` at weight 0.1
+  the totals differ (0.10, 0.10, −0.02, −0.10), so the group has non-zero variance and
+  produces a gradient instead of being degenerate — `rl-reward-functions.md` §4's worked
+  example, reproduced.
+- **But rows 2 and 3 of the first table score identically under every reward.** "Wrong
+  complexity" and "hangs" are separated only by the public diagnostic. See §3.3.
 
 ---
 
@@ -205,6 +274,29 @@ Each predicate now insists on the mechanism that program is meant to be stopped 
 - `test_preamble_line_offset_is_recorded` restated the implementation's own formula and could
   not fail; it now asserts the model's first line lands at `line_offset`.
 
+### 5.6 Truncated output was auto-failed on the training path — found by the final audit
+
+`behavior.md` §5.8 and ADR-0009 both require truncated output be **compared**, not
+auto-failed. It was auto-failed. When the bounded reader hits the cap it *kills* the program,
+so `exit_code` comes back `None` — and the verifier mapped `exit_code is None` to
+`RUNTIME_ERROR` before ever reaching the comparison.
+
+`test_truncated_stdout_is_still_compared` passed throughout, because `FakeSandbox` scripted
+`exit_code=0, truncated=True` — **a state `FirejailSandbox` can never produce.** The test was
+green against a fiction. Confirmed against the real sandbox: a flooding program whose captured
+output exactly equalled the expected output was graded `runtime_error`.
+
+The two adapters also disagreed at one seam: `SubprocessSandbox` truncates after the read and
+returns the real exit code, so it *did* compare.
+
+Fixed by checking truncation before exit status — when we killed the program, the status is
+ours, not its. Verified on the real sandbox: truncated output that matches now scores
+`passed`, and truncated output that differs scores `wrong_output`. The test fixture now
+scripts `exit_code=None`, the state the real adapter actually produces.
+
+Reward impact was real: `_ran` excludes `RUNTIME_ERROR`, so `ladder` was dropping from the
+0.10 rung to 0.05 on every truncated rollout.
+
 ---
 
 ## 6. Deviations from the plan
@@ -225,6 +317,8 @@ Added to `config/verifier.yaml`:
 | `sandbox.kill_after_seconds`, `sandbox.backstop_slack_seconds`, `sandbox.reap_timeout_seconds` | ADR-0014's three timers, hardcoded in `firejail.py` |
 | `comparator.absolute_float_tolerance` | `ABSOLUTE_FLOAT_TOLERANCE = 1e-5` in `comparator.py` |
 | `startup.self_test_timeout_seconds` | `_SELF_TEST_TIMEOUT_SECONDS = 2.0` in `startup.py` |
+| `sandbox.firejail_flags` | `--quiet --private --noprofile --seccomp=socket` hardcoded in `_command`. verifier-scorer.md §3 requires "all sourced from config, none hardcoded" |
+| `sandbox.timeout_seconds` | was 10.0, now **2.0** — see §3.3 |
 
 Added to `config/reward.yaml` under `shapes:` — every number defining a reward: the
 `binary_threshold` cut-off, `code_r1`'s three rungs, `ladder`'s three, and `extractability`'s

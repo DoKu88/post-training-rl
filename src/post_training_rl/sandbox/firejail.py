@@ -243,10 +243,8 @@ class FirejailSandbox:
             f"--kill-after={self._config.kill_after_seconds}",
             str(timeout_seconds),
             self._binary,
-            "--quiet",
-            "--private",  # fresh tmpfs home
-            "--noprofile",
-            "--seccomp=socket",  # blocks network syscalls
+            # The switches come from config; only the rlimit values are computed here.
+            *config.firejail_flags,
             f"--rlimit-nproc={config.max_processes}",
             f"--rlimit-nofile={config.max_open_files}",
             f"--rlimit-fsize={config.max_file_size_mib * _BYTES_PER_MIB}",

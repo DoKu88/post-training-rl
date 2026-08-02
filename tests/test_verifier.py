@@ -131,7 +131,12 @@ def test_result_count_always_matches_test_count():
 def test_truncated_stdout_is_still_compared():
     # Compared, not auto-failed. Because the comparator requires matching token counts,
     # truncation almost always fails anyway — but through the normal path.
-    sandbox = FakeSandbox([_ran("1", truncated=True)])
+    #
+    # `exit_code=None` is the point. When the reader hits the cap it kills the program, so
+    # the status that comes back is the sandbox's kill, not the program's own exit. Scripting
+    # exit_code=0 here would test a state FirejailSandbox can never produce, and the auto-fail
+    # bug this pins would go unnoticed.
+    sandbox = FakeSandbox([_ran("1", exit_code=None, truncated=True)])
     verifier = Verifier(sandbox, _CONFIG)
 
     [report] = verifier.verify_batch([(SOLUTION, _problem(graded=1, expected="1"))])

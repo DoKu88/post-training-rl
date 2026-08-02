@@ -32,6 +32,7 @@ class SandboxConfig:
     kill_after_seconds: float
     backstop_slack_seconds: float
     reap_timeout_seconds: float
+    firejail_flags: tuple[str, ...]
 
 
 @dataclass(frozen=True)
@@ -122,6 +123,7 @@ def load_verifier_config(path: Path) -> VerifierConfig:
                 document, "sandbox.backstop_slack_seconds", path
             ),
             reap_timeout_seconds=_require(document, "sandbox.reap_timeout_seconds", path),
+            firejail_flags=tuple(_require(document, "sandbox.firejail_flags", path)),
         ),
         comparator=ComparatorConfig(
             absolute_float_tolerance=_require(

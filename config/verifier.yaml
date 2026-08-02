@@ -7,11 +7,32 @@ sandbox:
   # weaker backend (ADR-0005).
   backend: firejail
 
-  # Flat, and deliberately not the dataset's own `time_limit`. Those limits are 1-6s and
-  # were calibrated for C++ contest submissions; Python is roughly an order of magnitude
-  # slower, so enforcing them would fail correct Python solutions in bulk. DeepMind's own
-  # released evaluator makes the same choice (ADR-0006).
-  timeout_seconds: 10.0
+  # Flat, and deliberately not the dataset's own `time_limit` (ADR-0006). That decision is
+  # unchanged; only the value has moved, and provisionally.
+  #
+  # ADR-0006 sets 10.0, following DeepMind's released evaluator, on the reasoning that
+  # Python is ~10x slower than the C++ the 1-6s contest limits were calibrated for. Measured
+  # on this machine (CPython 3.11, sprint 1), that headroom is far larger than needed:
+  #
+  #   correct O(n) / O(n log n), n = 1,000,000       0.07 - 0.10 s
+  #   segment tree, 1e5 queries                      0.20 s
+  #   2D DP, 2000x2000                               0.57 s   <- slowest sound solution found
+  #   list.insert(0, x) x 200,000  (hidden O(n^2))   1.93 s
+  #   explicit O(n^2), 100M ops                      2.66 s
+  #   explicit O(n^2), 900M ops                     11.00 s
+  #
+  # 2.0 keeps ~3.5x margin over the slowest algorithmically-sound solution measured, while
+  # placing the "too slow" boundary below the O(n^2) cases — which is the signal that
+  # matters, since a solution that times out on the longest graded input but passes the
+  # small public tests is reported as exactly that (ADR-0009 orders graded longest-first).
+  #
+  # It also cuts the cost of a genuinely hung rollout from 22s to 6s.
+  #
+  # DELIBERATELY PROVISIONAL. The timeout rate is unmeasured until a real run, so this is a
+  # reasonable value chosen to avoid over-optimising early rather than a settled one. Sprint
+  # 3 should ablate 1 / 2 / 5 / 10 against measured timeout rates and pass@k. See
+  # docs/plans/sprint-01-status.md §3.3.
+  timeout_seconds: 2.0
 
   memory_limit_gib: 4
   max_processes: 32
@@ -40,6 +61,27 @@ sandbox:
   # reap_timeout: how long to wait for an exited child to be collected before killing its
   # group outright. Reachable by a child that closes stdout and hangs.
   reap_timeout_seconds: 5.0
+
+  # The non-numeric firejail flags, in order. Their values are the rlimits above; these are
+  # the switches (ADR-0005). Listed here rather than hardcoded because verifier-scorer.md §3
+  # requires the flag set be configuration, so two runs sandboxed differently are diffable.
+  #
+  #   --quiet          suppress firejail's own banner
+  #   --private        fresh tmpfs home
+  #   --noprofile      ignore the system firejail profile, so behaviour does not vary by host
+  #   --noroot         the sandboxed user is not root inside the namespace. A partial answer
+  #                    to ADR-0005's "dedicated UID": the remainder needs a real service
+  #                    account, which is deployment rather than code.
+  #   --seccomp=socket block network syscalls
+  #
+  # NOTE: --timeout is deliberately absent. ADR-0014 moved the wall-clock limit to
+  # timeout(1) outside firejail, because the flag cost a flat ~2s per execution.
+  firejail_flags:
+    - --quiet
+    - --private
+    - --noprofile
+    - --noroot
+    - --seccomp=socket
 
 comparator:
   # Absolute, not relative — a difference of 1e-5 is accepted however large the operands
