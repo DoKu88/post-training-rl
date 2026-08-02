@@ -25,6 +25,15 @@ The distribution of private-test counts across the training split is unmeasured.
 out most problems carry fewer than 15, the generated-test filler will be doing more work than
 intended and this decision should be revisited.
 
+**There is deliberately no guard on the private/generated mix beyond the five-total floor.**
+A problem with 2 private and 3 generated tests clears the floor, and 60% of its graded signal
+then comes from the pool measured at a 46% false-positive-or-slow rate. A guard was considered
+and deferred rather than rejected: its cost depends entirely on a distribution nobody has
+measured, so choosing a threshold now would be guessing. Each problem's private/generated
+split is therefore **recorded**, and the distribution is reported in the first measurement
+pass — at which point a floor on private tests, or a cap on the generated share, becomes a
+decision with data behind it.
+
 Captured stdout is capped at 10 MB per execution and compared as truncated rather than
 auto-failed; `--rlimit-fsize` does not apply to pipes, so without a parent-side cap a runaway
 print loop can exhaust memory in the training process itself.

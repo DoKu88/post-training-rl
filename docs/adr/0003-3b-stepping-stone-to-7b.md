@@ -5,6 +5,9 @@ functions are correct, not to produce a good model — its reward curve says not
 whether the method works. Model identity, quantisation scheme, and generation backend all
 live in YAML so that scaling up is a config change rather than a code change.
 
+Concrete parameters — checkpoints, quantisation config, LoRA placement and rank, and the VRAM
+budget — are in [`docs/design/model.md`](../design/model.md).
+
 ## Consequences
 
 3B runs bf16 base + LoRA (~6 GB). 7B requires NF4 QLoRA to fit (~9 GB without vLLM), and

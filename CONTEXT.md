@@ -52,9 +52,17 @@ exactly one drives training in any given run.
 **Reward registry**:
 The collection of available reward functions, each recorded with the source it came from.
 
-**Extraction tier**:
-Which rule succeeded in recovering code from a completion — from a language-tagged fenced
-block at the top, down to nothing recovered at all.
+**Fence**:
+The Markdown delimiter marking where code begins and ends inside a completion — three
+backticks, optionally followed by a language tag. It is packaging, not content: a fence can be
+well formed around code that does not run, and correct code can arrive with no fence at all.
+_Avoid_: code block (that is the content inside), delimiter, markdown block
+
+**Extraction outcome**:
+What recovering code from a completion yielded: which fence was used, and whether the
+recovered code parses. The two are recorded separately because they measure different things
+— packaging and content — and can fail independently.
+_Avoid_: extraction tier (the tiers are internal to the cascade, not what gets recorded)
 
 **Comparator**:
 The rule that decides whether a program's output counts as matching the expected output.

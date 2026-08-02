@@ -7,6 +7,10 @@ the first run and the baseline every other entry is compared against.
 The literature genuinely disagrees, and the disagreement is not resolvable from the armchair
 — so the project is built to answer it empirically instead of guessing.
 
+Full detail — the shared input type, each function's formula and range, the weighting
+arithmetic, and what is measured but never rewarded — is in
+[`docs/design/rl-reward-functions.md`](../design/rl-reward-functions.md).
+
 ## The registry
 
 | Key | Rule | Source |
@@ -23,7 +27,7 @@ Auxiliary terms, composable with any primary via `reward_weights`:
 
 | Key | Rule | Source |
 | --- | --- | --- |
-| `extractability` | extraction tier graded −1.0 … +1.0, weight 0.1 | `docs/research/format-adherence.md` §8.3 |
+| `extractability` | `parse_term + fence_term`, −1.0 … +1.0, weight 0.1 — see ADR-0012 | `docs/research/format-adherence.md` §8.3, adapted |
 | `overlong` | 0 / linear decay over cache / −1 | DAPO, [arXiv:2503.14476](https://arxiv.org/pdf/2503.14476) |
 
 ## Why binary is the default

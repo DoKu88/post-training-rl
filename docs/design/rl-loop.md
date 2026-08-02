@@ -136,7 +136,8 @@ Diagram 2 with the boxes opened up. Each component is tagged with the ADR that g
  │  │ ① extract_python(completion, prefill)              [ADR-0012]         │  │
  │  │     tagged → untagged → any → bare → none, ast.parse gate             │  │
  │  │     LAST syntactically valid candidate wins                           │  │
- │  │     tier == none ──▶ SHORT-CIRCUIT: zero sandbox calls                │  │
+ │  │     records (fence, parsed) as TWO facts, never one tier              │  │
+ │  │     no code recovered ──▶ SHORT-CIRCUIT: zero sandbox calls           │  │
  │  │                                                                       │  │
  │  │ ② prepend determinism preamble                     [ADR-0008]         │  │
  │  │     random.seed(N) · np.random.seed(N) · record line offset           │  │
@@ -179,7 +180,8 @@ Diagram 2 with the boxes opened up. Each component is tagged with the ADR that g
  │  │                    pass_rate · binary_threshold · ladder ·            │  │
  │  │                    code_r1 · hierarchical · verpo                     │  │
  │  │  auxiliary w=0.1   extractability      (overlong: deferred)           │  │
- │  │  shadow    w=0.0   every other entry + extraction-tier histogram      │  │
+ │  │  shadow    w=0.0   every other entry · fence + parse histograms ·     │  │
+ │  │                    public pass rate            [ADR-0013]             │  │
  │  │                    → the parse-failure rate nobody has published      │  │
  │  └───────────────────────────────────────────────────────────────────────┘  │
  │                                                                             │
@@ -218,7 +220,7 @@ Ordered by where each sits in the loop.
 | **GRPOTrainer** (sampling) | Agent's action selection | `Dataset` row | G completions per prompt — **the group** |
 | **TRL adapter** | The wiring between the boxes | Completions + forwarded dataset columns | `list[float]` of rewards |
 | **Verification cache** | *(no role — an optimisation)* | Batch of completions + problems | `list[RolloutOutcome]`, computing each once |
-| **Extraction** | Environment's reading of `A_t` | `completion: str`, `prefill: str` | `Extraction(code, tier)` |
+| **Extraction** | Environment's reading of `A_t` | `completion: str`, `prefill: str` | `Extraction(code, fence, parsed)` |
 | **Verifier** | Environment dynamics — executes `A_t` | `(completion: str, problem: Problem)` | `VerificationReport` |
 | **Sandbox** | Inner mechanics of execution | `(source: str, stdin_text: str, timeout_seconds: float)` | `SandboxResult` |
 | **Comparator** | Success predicate on one test | `(actual: str, expected: str)` | `bool` |
@@ -295,7 +297,7 @@ which may recover nothing at all.
 
 That gap is not incidental plumbing — it is a reward-bearing step. A completion from which no
 code can be recovered short-circuits the environment entirely: no execution, no test results,
-and the reward is determined by the extraction tier alone.
+and the reward is determined by the extraction outcome alone.
 
 ---
 
@@ -312,8 +314,8 @@ Concretely, for a group size of 4:
 4. **Cache** calls `Verifier.verify_batch` once for all 4. *(This is sound only because
    execution is deterministic — ADR-0008.)*
 5. For each rollout the **verifier**:
-   a. runs **extraction** → `Extraction(code, tier)`;
-   b. short-circuits with an empty report if the tier is `none`;
+   a. runs **extraction** → `Extraction(code, fence, parsed)`;
+   b. short-circuits with an empty report if no code was recovered;
    c. otherwise prepends the determinism preamble and, per graded test, calls the
       **sandbox** and the **comparator**, abandoning the rest on the first timeout.
    → `VerificationReport`

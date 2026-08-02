@@ -63,13 +63,11 @@ class TestOutcome(StrEnum):
     SKIPPED_AFTER_TIMEOUT = "skipped_after_timeout"   # ADR-0006
 
 
-class ExtractionTier(StrEnum):
-    TAGGED = "tagged"
-    UNTAGGED = "untagged"
-    ANY = "any"
-    ANY_INVALID = "any_invalid"
-    BARE = "bare"
-    NONE = "none"
+class Fence(StrEnum):
+    TAGGED = "tagged"        # ```python / ```py / ```python3
+    UNTAGGED = "untagged"    # bare ``` with no language
+    OTHER_TAG = "other_tag"  # ```cpp — fenced, but not tagged as Python
+    NONE = "none"            # no fence anywhere in the completion
 
 
 @dataclass(frozen=True)
@@ -100,7 +98,8 @@ class TestResult:
 @dataclass(frozen=True)
 class Extraction:
     code: str | None
-    tier: ExtractionTier
+    fence: Fence      # packaging — how the code was wrapped
+    parsed: bool      # content   — whether `ast.parse` accepted it
 
 
 @dataclass(frozen=True)
@@ -181,7 +180,10 @@ Implementation obligations:
   does not kill the child on expiry.
 - **Belt and braces on the timeout.** firejail's `--timeout` has 1-second granularity; the
   Python-side timeout is set slightly higher so firejail wins normally and Python is the
-  backstop if firejail itself wedges.
+  backstop if firejail itself wedges. `timed_out` is true if **either** fires. A child killed
+  by a signal for any other reason reports `exit_code = None` with `timed_out = False`, and
+  the verifier maps that to `RUNTIME_ERROR` — so "hung" and "crashed" never collapse into one
+  outcome.
 - **Prepend the determinism preamble** (ADR-0008) and record the line offset, so a traceback
   in `stderr_excerpt` can be mapped back to the model's own line numbers.
 - `PYTHONHASHSEED` is passed through the environment, which firejail preserves.
@@ -214,9 +216,14 @@ def extract_python(completion: str, prefill: str = "") -> Extraction:
     """Recover executable Python from a completion via a syntax-gated cascade."""
 ```
 
-Tier order: `tagged` → `untagged` → `any` → `bare` → `none`, taking the **last**
+Cascade order: `tagged` → `untagged` → `other_tag` → bare text, taking the **last**
 syntactically valid candidate at the first tier that yields one, gated by `ast.parse`.
-A tier that has candidates but none that parse returns `any_invalid`.
+
+The cascade tiers are **internal**. What the result records is the pair `(fence, parsed)` —
+which fence the returned code arrived in, and whether it parses. When candidates exist but
+none parse, the last candidate is returned with `parsed = False` and the fence it came from,
+so a well-formed ```` ```python ```` block containing a syntax error reports
+`(TAGGED, False)` rather than collapsing into an "invalid" bucket that hides the fence.
 
 `prefill` is prepended before matching. It defaults to `""`, and ADR-0012 keeps prefill off
 by default — but the parameter exists because forgetting to re-prepend it is documented as
@@ -265,7 +272,8 @@ also where parallelism lives.
 
 ### Per-rollout algorithm
 
-1. `extract_python(completion, prefill)`. If tier is `none`, return a report with no results —
+1. `extract_python(completion, prefill)`. If no code was recovered, return a report with no
+   results —
    **no sandbox invocation at all**. This is the cheap early exit and it matters: it is the
    most common failure early in training.
 2. Prepend the determinism preamble.
@@ -297,7 +305,7 @@ Stated on the class, because it is the single most important thing a caller must
 
 > **Raises only on infrastructure failure.** A solution that crashes, hangs, floods output,
 > or produces no parseable code is *data* — it becomes a `TestOutcome` or an
-> `ExtractionTier`, never an exception. A missing sandbox binary, an unwritable temp
+> `Extraction` result, never an exception. A missing sandbox binary, an unwritable temp
 > directory, or a malformed `Problem` raises, because those are systematic and a run that
 > continues past them produces meaningless rewards for every subsequent step.
 
@@ -332,11 +340,12 @@ Each carries its source in its docstring, matching ADR-0011's table.
 **No mode flag.** There is no `score(outcome, kind="binary")`; selection is a dict lookup
 against a config string. A mode flag would be several functions wearing one name.
 
-**Parameterised rewards are deferred.** `overlong` needs `L_max`/`L_cache`, and an annealed
-`ladder` needs a step counter, so both need factories rather than bare functions. Neither is
-in the v1 run. Introducing a `Callable[[Mapping], RewardFn]` factory layer now would be
-speculative generality for one hypothetical caller; when the second parameterised reward is
-actually needed, that is the case that earns it. `ladder` ships unannealed.
+**No factory layer is needed.** An earlier draft deferred a `Callable[[Mapping], RewardFn]`
+layer for rewards needing parameters. Reading the installed TRL removed the need: `trainer_state`
+is passed to every reward function, so a schedule-dependent reward reads `global_step` directly.
+`overlong`'s `L_max`/`L_cache` come from config at construction, which the registry entry can
+close over. `ladder` ships unannealed regardless, because ADR-0011 makes `binary` the default
+and `ladder` an ablation.
 
 `SKIPPED_AFTER_TIMEOUT` counts as not-passed everywhere. Stated once here so every reward
 function does not have to re-decide it.
@@ -381,8 +390,10 @@ appended with **weight 0.0**: it computes every name in `config.shadow_log` from
 outcomes, emits them via TRL's `log_metric` kwarg, and returns zeros. Weight zero means it
 cannot affect training, and TRL's `sum_then_normalize` leaves the total unchanged.
 
-The tier histogram (`format/frac_none`, `format/frac_tagged`, …) is emitted the same way.
-That histogram is the measurement ADR-0012 says nobody has published.
+The fence and parse histograms (`format/fence_tagged`, `format/fence_none`,
+`format/parsed`, …) are emitted the same way. They are the measurement ADR-0012 says nobody
+has published, and they are logged as two distributions rather than one so that "cannot
+format" and "cannot write valid Python" stay distinguishable.
 
 ### Serialisation boundary
 
@@ -479,9 +490,22 @@ itself: verifier tests need no firejail, no temp files, and no wall-clock waitin
 
 Carried into the sprint plan rather than guessed at here.
 
-1. **TRL's exact reward-function signature and kwarg-forwarding behaviour must be read from
-   the installed version** before the adapter is written. The design assumes extra dataset
-   columns arrive as kwargs and that `log_metric` is available.
+1. ~~Four assumptions about TRL.~~ **All four verified against the installed `trl 1.9.2`:**
+   a. ✅ Extra dataset columns are forwarded as kwargs —
+      `keys = [k for k in inputs[0] if k not in ["prompt", "completion", "completion_ids"]]`.
+      Signature is `reward_func(prompts=, completions=, completion_ids=, **kwargs)`.
+   b. ✅ `log_metric` and `log_extra` are passed as kwargs.
+   c. ✅ `TrainerCallback.on_step_end` exists, so the cache reset has a hook. **But** see the
+      torchvision defect in `model.md` §7 — importing `TrainerCallback` currently raises.
+   d. ✅ `mask_truncated_completions` multiplies `completion_mask` **only**; `rewards` is never
+      touched. A truncated completion's reward therefore **does** feed the group mean and
+      standard deviation, shaping every sibling's advantage even though its own tokens carry
+      no gradient. **Truncated completions must be verified normally** — skipping them would
+      produce silently wrong advantages.
+
+   Bonus: `reward_kwargs["trainer_state"] = self.state`, commented *"This allows for dynamic
+   reward shaping based on training progress."* A schedule-dependent reward reads
+   `global_step` from it, so **the deferred factory layer in §7 is unnecessary.**
 2. **Arrow round-tripping of nested test structures** is assumed to work and is unverified.
 3. **`private_tests` count distribution is unmeasured** (flagged in ADR-0009). If most
    problems carry fewer than 15, generated filler does more work than intended.

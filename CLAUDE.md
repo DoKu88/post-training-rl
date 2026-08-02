@@ -9,7 +9,7 @@ A single **RTX 5090 — 32 GB VRAM, Blackwell sm_120, compute capability 12.0**.
 This is the binding constraint on every design decision. `TORCH_CUDA_ARCH_LIST="12.0"`.
 
 **Qwen2.5-7B-Instruct is the target. Qwen2.5-3B-Instruct is the stepping stone**, and
-the 3B run's job is to prove the verifier, scorer, and reward ladder are correct — not
+the 3B run's job is to prove the verifier, scorer, and reward functions are correct — not
 to produce a good model.
 
 - 3B: bf16 base + LoRA, ~6 GB.
@@ -29,8 +29,15 @@ moving to 7B, and fall back to plain `.generate()` if it breaks.
 Conda. Activate before running anything:
 
 ```bash
-conda activate post-training-rl
+conda activate post-train
 ```
+
+The env holds torch 2.11.0+cu128, transformers 5.14.1, trl 1.9.2, peft 0.20.0,
+bitsandbytes 0.50.0, datasets 5.0.1. Full table in [`docs/design/model.md`](docs/design/model.md).
+
+**Known defect:** `torchvision 0.26.0` is built against CUDA 13.0 while torch is cu128, so
+any import reaching `transformers.image_utils` raises — including
+`from transformers import TrainerCallback`. This is text-only training; uninstall torchvision.
 
 Hard-won installation facts — see `docs/research/rlvr-stack.md` for sources:
 
@@ -72,6 +79,12 @@ rather than improvising a different design.
 - **[`docs/adr/`](docs/adr/)** — every significant decision and why it was made. **Read the
   relevant ADR before changing behaviour in that area**, and say so explicitly if your work
   contradicts one rather than silently overriding it.
+- **[`docs/design/`](docs/design/)** — how the pieces fit:
+  - `rl-loop.md` — every module's place in the classic RL loop, and where the analogy breaks.
+  - `verifier-scorer.md` — module design, types, seams.
+  - `behavior.md` — intended behaviour per module: does / guarantees / refuses.
+  - `rl-reward-functions.md` — every reward function, its shared input, and its source.
+  - `model.md` — checkpoint, quantisation, LoRA placement, VRAM budget.
 - `docs/research/rlvr-stack.md` — primary-source research on TRL, vLLM, bitsandbytes on
   sm_120, the CodeContests schema, sandboxing, and reward shape. **Read it before making
   stack decisions.** It documents several places where official docs are actively wrong

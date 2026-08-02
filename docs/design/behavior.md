@@ -64,24 +64,27 @@ adapter → smoke.
 
 ### Guarantees
 
-7. Every result carries the tier that produced it. The tier is not a debugging aid — it feeds
-   the `extractability` reward and the histogram that is the project's own measurement of
-   format-failure rate.
-8. A candidate is only selected if `ast.parse` accepts it. When a tier has candidates but none
-   parse, the tier is reported as `any_invalid` and the last candidate is still returned, so
-   the caller can distinguish "malformed code" from "no code".
+7. Every result carries **two independent facts**: which fence the code arrived in, and
+   whether that code parses. They are never collapsed into a single value, because a flawless
+   fence can wrap broken code and correct code can arrive unfenced — and the two failures call
+   for opposite responses.
+8. A candidate is only selected if `ast.parse` accepts it. When candidates exist but none
+   parse, the last candidate is still returned with `parsed = False`, so the caller can
+   distinguish "malformed code" from "no code at all".
 9. Prose is never returned as code. The bare tier is syntax-gated precisely so that text
    which is not a program fails it.
 10. It never falls back to returning the whole completion unguarded.
 
 ### Refuses
 
-11. Returns tier `none` with no code for an empty completion, or for one containing nothing
-    that parses.
+11. Returns fence `none` with no code for an empty completion, or for one containing nothing
+    that parses and no fence.
 12. When a prefill is configured but not supplied at the call site, a completion that opens
-    mid-block yields tier `none`. This failure is deliberate and specified: it is the
+    mid-block yields fence `none`. This failure is deliberate and specified: it is the
     documented way this component gets silently misused, and it must fail loudly rather than
-    return plausible-looking partial code.
+    return plausible-looking partial code. The prefill value has **two** consumers — the
+    dataset builder that renders the prompt and the reward function that re-prepends before
+    extraction — and they must be fed from the same config key.
 
 ---
 
@@ -97,8 +100,10 @@ adapter → smoke.
 2. Every function is pure — no I/O, no execution, no clock, no global state. The same outcome
    always yields the same number.
 3. A test skipped because an earlier test timed out counts as not passed, everywhere.
-4. Public test results never influence a primary reward. They exist for the small auxiliary
-   term only, because a reward computed over tests the model can read is directly hackable.
+4. Public test results never influence **any** reward, primary or auxiliary. They are
+   executed and logged as a diagnostic only (ADR-0013). A reward computed over tests the
+   model can read is directly hackable, and the registry deliberately contains no entry that
+   consumes them.
 5. Each function's docstring names the source it came from.
 
 ### Per function
@@ -113,9 +118,11 @@ adapter → smoke.
 10. **`code_r1`** — a format failure scores below a wrong answer, which scores below a correct
     one. The only surveyed design where failing to produce code is distinguishable from
     producing wrong code.
-11. **`extractability`** — maps the extraction tier onto a graded scale, worst to best. Carries
-    weight 0.1 against the primary reward, and exists solely to give an otherwise-degenerate
-    group some variance.
+11. **`extractability`** — sums a parse term and a fence term, so both dimensions are rewarded
+    independently. The parse swing is deliberately larger than the fence swing, guaranteeing
+    that the worst parsing rollout outranks the best non-parsing one — a well-fenced broken
+    program must never beat a bare working one. Carries weight 0.1 against the primary reward,
+    and exists to give an otherwise-degenerate group some variance.
 
 ---
 
@@ -168,7 +175,9 @@ adapter → smoke.
 
 1. Extracts code, prepends the determinism preamble, and runs each graded test in order.
 2. Classifies each test as passed, wrong output, runtime error, timed out, or skipped.
-3. Runs the problem's public tests separately and reports them separately.
+3. Runs the problem's public tests separately and reports them separately. No reward reads
+   them; their pass rate is logged each step as ground truth that does not move with whatever
+   reward is driving training (ADR-0013).
 4. Processes a batch concurrently and returns reports in the order the batch was given.
 
 ### Guarantees
@@ -188,7 +197,8 @@ adapter → smoke.
 ### Refuses
 
 11. **Raises only on infrastructure failure.** A solution that crashes, hangs, floods output,
-    or produces no parseable code is data — it becomes an outcome or a tier, never an
+    or produces no parseable code is data — it becomes a test outcome or an extraction
+    result, never an
     exception. A missing sandbox, an unwritable directory, or a malformed problem raises,
     because those are systematic and every subsequent reward would be meaningless.
 
@@ -266,7 +276,8 @@ adapter → smoke.
    those not driving training. One run therefore yields the counterfactual curves for every
    reward shape in the registry.
 5. Shadow-logged rewards carry weight zero and provably cannot influence training.
-6. The distribution of extraction tiers is logged every step. No published source reports a
+6. The fence and parse distributions are logged separately every step. No published source
+   reports a
    code parse-failure rate for any model on any benchmark, so this is a measurement the
    project makes for itself.
 7. Reconstruction asserts the shape it expects and names the offending problem when it fails.
@@ -296,9 +307,11 @@ once per run and reuses the same fixtures as the containment tests.
 
 ### Guarantees
 
-1. A short training run completes, produces finite rewards, logs the tier histogram, and
+1. A short training run completes, produces finite rewards, logs the fence and parse
+   histograms, and
    reports every shadow-logged reward alongside the training reward.
 
-This exercises the assumptions the design records as unverified: the trainer's reward-function
-signature, the forwarding of dataset columns to reward functions, and the availability of the
-metric-logging hook. It verifies the contract, not learning.
+The trainer contract it rests on — reward-function signature, kwarg forwarding of dataset
+columns, `log_metric`, and the step-end callback — has been verified against the installed
+`trl 1.9.2` by reading its source. This test guards against those changing under a version
+bump. It verifies the contract, not learning.
