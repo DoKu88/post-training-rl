@@ -1,0 +1,14 @@
+# Sprint 1 dependencies. The conda environment is `post-train` (the name differs from the
+# repo); these are pip-installed into it:
+#
+#   conda activate post-train
+#   pip install -r requirements.txt
+#   pip install -e .
+#
+# Sprint 1 is deliberately stdlib-only apart from these. Nothing here imports trl,
+# transformers, peft, or datasets — those arrive in sprint 3 and are installed in the conda
+# environment already (see docs/design/model.md for the pinned table).
+
+pyyaml>=6.0            # config loading
+pytest>=8.0            # test runner
+pytest-timeout>=2.3    # guards the sandbox suites against a hang taking the run down
