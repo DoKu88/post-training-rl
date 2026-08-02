@@ -99,12 +99,23 @@ Our adapter bridges batch-shaped TRL to single-rollout registry functions:
 ```python
 def make_trl_reward(name: str, cache: VerificationCache):
     fn = REWARD_FUNCTIONS[name]
-    def reward(prompts, completions, completion_ids, **kwargs) -> list[float]:
-        outcomes = cache.outcomes(completions, kwargs["problem"], completion_ids)
+
+    def reward(prompts, completions, completion_ids,
+               problem_id, graded_tests, public_tests, **kwargs) -> list[float]:
+        # TRL forwards each dataset column as a parallel list, one entry per rollout.
+        problems = [rebuild_problem(pid, g, p)
+                    for pid, g, p in zip(problem_id, graded_tests, public_tests)]
+        outcomes = cache.outcomes(completions, problems, completion_ids)
         return [fn(o) for o in outcomes]
+
     reward.__name__ = name
     return reward
 ```
+
+The dataset's columns are `prompt`, `problem_id`, `graded_tests`, `public_tests` — there is no
+single `problem` column, because `datasets` stores Arrow and cannot hold a frozen dataclass.
+`rebuild_problem` is the one place that conversion happens, and it asserts shape and names the
+offending `problem_id` on failure.
 
 The cache guarantees the verifier runs once per rollout regardless of how many reward
 functions ask (ADR-0004), which is sound only because execution is deterministic (ADR-0008).
@@ -131,6 +142,11 @@ warning at the end of that section.
 | **5** | `pass_rate` | `passed / total` over graded tests | [0, 1] | open-r1 `code_reward` |
 | **6** | `ladder` | `0` no code → `.05` parses → `.10` runs → `.10 + .90×pass_rate` | [0, 1] | This project; shaped like DHRCL's hierarchy ([2607.26457](https://arxiv.org/html/2607.26457)) |
 | **7** | `hierarchical` | syntax → execution → partial correctness → AST alignment | [0, 1] | DHRCL ([2607.26457](https://arxiv.org/html/2607.26457)) |
+
+**Built for the first run: ranks 1, 2, 4, 5, 6.** `verpo` (3) and `hierarchical` (7) are
+recorded here to map the design space, not to be implemented yet — each needs machinery no
+other entry needs, and neither has a behaviour spec. The same applies to `overlong` below.
+They earn one when a run actually selects them.
 
 ### 3.1 Basis for the ranking
 

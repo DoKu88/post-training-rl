@@ -65,9 +65,12 @@ The one worth flagging up front: **never call the verifier an "environment."** I
 ## How work gets planned and executed
 
 1. **Decisions** → `docs/adr/NNNN-title.md`, written by `/domain-modeling`.
-2. **Sprint tasks** → `docs/plans/sprint-NN.md`. Each task must name the tests it requires;
-   `/write-code` writes only the tests the plan specifies and no others.
-3. **Implementation** → `/write-code docs/plans/sprint-NN.md, task N`. One task per
+2. **Sprint objectives and gates** → [`docs/plans/roadmap.md`](docs/plans/roadmap.md).
+3. **Sprint tasks** → `docs/plans/sprint-NN.md`. Each task leads with the **behaviour** it
+   delivers and names the tests it requires; `/write-code` writes only those tests and no
+   others. Work in vertical slices — one test, one implementation, repeat — never the whole
+   test list up front.
+4. **Implementation** → `/write-code docs/plans/sprint-NN.md, task N`. One task per
    invocation, reviewed between tasks.
 
 Do not implement ahead of the plan. If a task cannot be built as written, stop and say so

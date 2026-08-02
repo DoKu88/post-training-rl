@@ -114,7 +114,9 @@ adapter → smoke.
 8. **`binary_threshold`** — 1.0 when the pass rate exceeds 0.99, else 0.0. The threshold is a
    float-comparison guard, not a real tolerance.
 9. **`ladder`** — graded rungs: no code, code that parses, code that runs, then pass rate.
-   Ships unannealed; the annealed variant needs a step counter and is deferred.
+   Ships unannealed. An annealed variant is possible without extra machinery, since the
+   trainer passes `trainer_state` and its `global_step` to every reward function; it is simply
+   not part of the first run.
 10. **`code_r1`** — a format failure scores below a wrong answer, which scores below a correct
     one. The only surveyed design where failing to produce code is distinguishable from
     producing wrong code.
@@ -123,6 +125,12 @@ adapter → smoke.
     that the worst parsing rollout outranks the best non-parsing one — a well-fenced broken
     program must never beat a bare working one. Carries weight 0.1 against the primary reward,
     and exists to give an otherwise-degenerate group some variance.
+
+12. **`hierarchical`, `verpo`, and `overlong`** are in ADR-0011's registry but are **not
+    specified here and not built for the first run.** Each needs machinery no other entry
+    needs — AST structural alignment, Gaussian-KDE density calibration, and a length schedule
+    respectively. They earn a behaviour spec when one is actually selected for a run. Listing
+    them in the registry records the design space; it does not commit to building them.
 
 ---
 

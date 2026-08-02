@@ -29,24 +29,16 @@ the real solution. Notably, Qwen's own evaluation harness is a dissenter — it 
 
 ## How this feeds the reward
 
-The `extractability` entry in ADR-0011's registry scores both facts additively, weighted 0.1
-against the execution reward:
+The `extractability` entry in ADR-0011's registry scores both facts additively, weighted
+against the execution reward. **The concrete values live in
+[`docs/design/rl-reward-functions.md`](../design/rl-reward-functions.md) §3**, not here — this
+ADR records the two properties they must satisfy:
 
-```
-value      = parse_term + fence_term
-parse_term = +0.6 if parsed else −0.6
-fence_term = +0.4 tagged │ +0.2 untagged │ 0.0 other_tag │ −0.4 none
-```
-
-|  | tagged | untagged | other_tag | none |
-| --- | --- | --- | --- | --- |
-| **parses** | +1.0 | +0.8 | +0.6 | +0.2 |
-| **does not parse** | −0.2 | −0.4 | −0.6 | −1.0 |
-
-Fence quality is rewarded in its own right — well-formed output is wanted even when the
-program already runs. But the parse swing (1.2) deliberately exceeds the fence swing (0.8),
-so the **worst parsing rollout still outranks the best non-parsing one**. A beautifully
-fenced broken program must never beat a bare working one.
+1. **Fence quality is rewarded in its own right.** Well-formed output is wanted even when the
+   program already runs, so a better fence scores higher at equal parse status.
+2. **The parse swing must exceed the fence swing.** The worst parsing rollout has to outrank
+   the best non-parsing one — a beautifully fenced broken program must never beat a bare
+   working one. Any future retuning of the values has to preserve this.
 
 The cosmetic-grading risk is accepted knowingly: the cascade already recovers code from
 untagged and unfenced completions, so the fence term pays for output that was already usable,
