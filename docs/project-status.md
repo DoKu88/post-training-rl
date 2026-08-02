@@ -1,6 +1,6 @@
 # Project status
 
-**Last updated:** 2026-08-02 · **Phase:** sprint 1 in progress — task 2 of 8 complete
+**Last updated:** 2026-08-02 · **Phase:** sprint 1 in progress — task 3 of 8 complete
 
 A running record of what exists, what is decided, and what happens next. Update it whenever a
 sprint task completes, a decision is made, or an unknown gets measured.
@@ -9,9 +9,9 @@ sprint task completes, a decision is made, or an unknown gets measured.
 
 ## One-line summary
 
-Every design decision is made and written down. **Sprint 1 is under way** — scaffold, types, config, and
-the comparator are in. The next action is
-`/write-code docs/plans/sprint-01.md, task 3`.
+Every design decision is made and written down. **Sprint 1 is under way** — scaffold, types, config, comparator, and
+the extraction cascade are in. The next action is
+`/write-code docs/plans/sprint-01.md, task 4`.
 
 ---
 
@@ -24,7 +24,7 @@ the comparator are in. The next action is
 | Vocabulary | ✅ `CONTEXT.md` |
 | Design | ✅ 5 documents — loop, modules, behaviour, rewards, model |
 | Plan | ✅ Roadmap + sprint 1 fully specified |
-| **Code** | 🚧 **Sprint 1, task 2 of 8** — comparator green, 12 unit tests |
+| **Code** | 🚧 **Sprint 1, task 3 of 8** — 28 unit tests green |
 | Environment | ⚠️ Conda env `post-train`, one known defect · firejail 0.9.74 installed |
 
 ---
@@ -82,7 +82,7 @@ Both include a blunt "risks and unknowns" section listing what could **not** be 
 ```bash
 conda activate post-train
 # then, one task per invocation, reviewed between each:
-/write-code docs/plans/sprint-01.md, task 3
+/write-code docs/plans/sprint-01.md, task 4
 ```
 
 ### Sprint 1 task board
@@ -91,7 +91,7 @@ conda activate post-train
 | --- | --- | --- | --- |
 | 1 | Scaffold, types, config loading | 0 (deliberate) | ✅ |
 | 2 | Comparator | 12 unit | ✅ |
-| 3 | Extraction cascade | 16 unit | ☐ **review after** |
+| 3 | Extraction cascade | 16 unit | ✅ reviewed |
 | 4 | Sandbox seam + fake + subprocess | 4 integration | ☐ |
 | 5 | Firejail + containment | 9 integration | ☐ **review after** |
 | 6 | Verifier | 13 unit | ☐ |

@@ -15,7 +15,7 @@ exact `Decimal` comparison. Under its semantics DeepMind's own gold solutions sc
 # magnitudes, and it combines with the second sharp edge below: the reference parses integers
 # as 32-bit, so values beyond that range reach the float path and lose precision, which makes
 # two distinct very large integers compare equal.
-FLOAT_TOLERANCE = 1e-5
+ABSOLUTE_FLOAT_TOLERANCE = 1e-5
 
 
 def outputs_match(actual: str, expected: str) -> bool:
@@ -30,14 +30,22 @@ def outputs_match(actual: str, expected: str) -> bool:
 def _tokens_match(actual: str, expected: str) -> bool:
     if actual.lower() == expected.lower():
         return True
+    # behavior.md §1.3 phrases the numeric path as "when *either* side parses as a float".
+    # Requiring both is the same rule: if only one side is a number the pair cannot be
+    # numerically equal, and the case-insensitive comparison above has already rejected it.
     actual_value = _as_float(actual)
     expected_value = _as_float(expected)
     if actual_value is None or expected_value is None:
         return False
-    return abs(actual_value - expected_value) <= FLOAT_TOLERANCE
+    return abs(actual_value - expected_value) <= ABSOLUTE_FLOAT_TOLERANCE
 
 
 def _as_float(token: str) -> float | None:
+    """Parse `token` as a float, or None when it is not numeric.
+
+    A non-numeric token is ordinary data — most program output is not a number — so this
+    falls back to the caller's string comparison rather than propagating.
+    """
     try:
         return float(token)
     except ValueError:
