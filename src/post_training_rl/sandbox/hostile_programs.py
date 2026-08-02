@@ -39,11 +39,3 @@ FILE_WRITE_FLOOD = (
     "        handle.write(b'x' * 65536)\n"
 )
 
-# The four the startup self-test runs, per behavior.md §9 item 3 and verifier-scorer.md §3.
-# Named so a failure says which containment property is missing rather than which index.
-SELF_TEST_PROGRAMS = {
-    "infinite loop": INFINITE_LOOP,
-    "fork bomb": FORK_BOMB,
-    "network connection": NETWORK_CONNECTION,
-    "output flood": OUTPUT_FLOOD,
-}

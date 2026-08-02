@@ -1,6 +1,6 @@
 # Project status
 
-**Last updated:** 2026-08-02 · **Phase:** sprint 1 in progress — task 7 of 8 complete
+**Last updated:** 2026-08-02 · **Phase:** sprint 1 COMPLETE — all 8 tasks, all gates green
 
 A running record of what exists, what is decided, and what happens next. Update it whenever a
 sprint task completes, a decision is made, or an unknown gets measured.
@@ -24,7 +24,7 @@ adapters, the verifier and the reward registry are in. The next action is
 | Vocabulary | ✅ `CONTEXT.md` |
 | Design | ✅ 5 documents — loop, modules, behaviour, rewards, model |
 | Plan | ✅ Roadmap + sprint 1 fully specified |
-| **Code** | 🚧 **Sprint 1, task 7 of 8** — 61 unit + 4 subprocess + 9 containment green |
+| **Code** | ✅ **Sprint 1 complete** — 63 unit + 4 subprocess + 9 containment green |
 | Environment | ⚠️ Conda env `post-train`, one known defect · firejail 0.9.74 installed |
 
 ---
@@ -97,7 +97,7 @@ conda activate post-train
 | 5 | Firejail + containment | 9 integration | ✅ reviewed |
 | 6 | Verifier | 13 unit | ✅ reviewed |
 | 7 | Reward registry | 20 unit | ✅ |
-| 8 | Startup self-test | 2 unit | ☐ |
+| 8 | Startup self-test | 2 unit | ✅ |
 
 **Sprint 1 gate:** all suites green · containment verified in CI with firejail · a rollout
 scorable by all six implemented reward functions **with no model loaded** · every
