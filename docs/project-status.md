@@ -1,6 +1,6 @@
 # Project status
 
-**Last updated:** 2026-08-02 · **Phase:** sprint 1 COMPLETE — all 8 tasks, all gates green
+**Last updated:** 2026-08-02 · **Phase:** sprint 1 COMPLETE · sprint 2 PLANNED, not started
 
 A running record of what exists, what is decided, and what happens next. Update it whenever a
 sprint task completes, a decision is made, or an unknown gets measured.
@@ -9,10 +9,12 @@ sprint task completes, a decision is made, or an unknown gets measured.
 
 ## One-line summary
 
-Every design decision is made and written down. **Sprint 1 is complete** —
-see [`sprint-01-status.md`](plans/sprint-01-status.md). Built: — scaffold, types, config, comparator, extraction, and both sandbox
-adapters, the verifier, the reward registry and the startup self-test.
-The next action is sprint 2 — the dataset builder.
+**Sprint 1 is complete** — the verifier, both sandbox adapters, the reward registry and the
+startup self-test, all gates green. See [`sprint-01-status.md`](plans/sprint-01-status.md).
+
+**Sprint 2 is planned and unblocked** — [`sprint-02.md`](plans/sprint-02.md), 7 tasks, 36 unit
+tests. The corpus is already downloaded and `AutoTokenizer` imports, so nothing gates the
+start. The next action is `/write-code docs/plans/sprint-02.md, task 1`.
 
 ---
 
@@ -24,9 +26,9 @@ The next action is sprint 2 — the dataset builder.
 | Decisions | ✅ 14 ADRs (0006 amended: timeout provisionally 2.0 s) |
 | Vocabulary | ✅ `CONTEXT.md` |
 | Design | ✅ 5 documents — loop, modules, behaviour, rewards, model |
-| Plan | ✅ Roadmap + sprint 1 fully specified |
+| Plan | ✅ Roadmap + sprints 1 and 2 fully specified |
 | **Code** | ✅ **Sprint 1 complete** — 63 unit + 4 subprocess + 9 containment green |
-| Environment | ⚠️ Conda env `post-train`, one known defect · firejail 0.9.74 installed |
+| Environment | ⚠️ Conda env `post-train`, one known defect · firejail 0.9.74 · CodeContests 7.2 GB cached |
 
 ---
 
@@ -74,8 +76,10 @@ Both include a blunt "risks and unknowns" section listing what could **not** be 
 
 [`roadmap.md`](plans/roadmap.md) — four sprints, each with objective, delivers-table, and gate.
 [`sprint-01.md`](plans/sprint-01.md) — 8 tasks, 63 unit + 13 integration tests, fully specified.
-[`sprint-01-status.md`](plans/sprint-01-status.md) — **implementation report**: gates, measurements,
-the four defects review caught, deviations, and open items.
+[`sprint-01-status.md`](plans/sprint-01-status.md) — **implementation report**: gates, architecture
+(call tree, block diagram, type contracts), three measurements, six defects review caught,
+deviations, and open items.
+[`sprint-02.md`](plans/sprint-02.md) — 7 tasks, 36 unit + 1 corpus test, fully specified.
 
 ---
 
@@ -86,7 +90,13 @@ the four defects review caught, deviations, and open items.
 ```bash
 conda activate post-train
 # then, one task per invocation, reviewed between each:
-/write-code docs/plans/sprint-02.md, task 1   # sprint 2 not yet written
+/write-code docs/plans/sprint-02.md, task 1
+```
+
+**Before sprint 3, not sprint 2** — carried as sprint 2 task 7:
+
+```bash
+pip uninstall torchvision          # unblocks `from transformers import TrainerCallback`
 ```
 
 ### Sprint 1 task board
@@ -106,6 +116,23 @@ conda activate post-train
 scorable by all six implemented reward functions **with no model loaded** · every
 behaviour-governing constant in `config/verifier.yaml` · nothing imports `trl`,
 `transformers`, `peft`, or `datasets`.
+
+### Sprint 2 task board
+
+| # | Task | Tests | Status |
+| --- | --- | --- | --- |
+| 1 | Config, types, corpus loading, the two decode traps | 4 unit | ☐ |
+| 2 | Problem filters | 8 unit | ☐ |
+| 3 | Test-pool selection | 9 unit | ☐ **review after** |
+| 4 | Prompt rendering + length filter | 4 unit | ☐ |
+| 5 | `build_dataset` + drop report | 7 unit + 1 corpus | ☐ **review after** |
+| 6 | The measurement pass — four unknowns | 2 unit | ☐ |
+| 7 | Carried from sprint 1 (backend factory, torchvision, stale refs) | 2 unit | ☐ |
+
+**Sprint 2 gate:** the filtered dataset builds reproducibly from `config/dataset.yaml` · drop
+counts reported per rule and they **partition** the corpus ·
+`docs/measurements/codecontests.md` committed with all four distributions · every config value
+the measurement contradicts updated from measurement rather than estimate.
 
 ### Sprint order after that
 
@@ -145,6 +172,9 @@ sprint 3.**
 | Fence and parse rates | Whether `extractability` earns its keep, and whether prefill is worth adopting | Sprint 3 |
 | Timeout rate, and the right `timeout_seconds` | Provisionally 2.0 s. Ablate 1/2/5/10 against timeout rate and pass@k | Sprint 3 |
 | Base-model pass@1 | The only reference point that exists, since ADR-0010 broke comparability | Sprint 4 |
+
+The four sprint-2 unknowns are now specified as tasks 3 and 6 of
+[`sprint-02.md`](plans/sprint-02.md), with the corpus already on disk.
 
 ### Unverified assumptions
 
